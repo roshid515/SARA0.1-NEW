@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1015289549149",
+    "project_id": "sara01-d84a3",
+    "storage_bucket": "sara01-d84a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015289549149:android:4cadbb088a4f719e27d8b4",
+        "android_client_info": {
+          "package_name": "com.roshid.sara01"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDI3vQjSCseN7721HXc8EMjzClsDJLuAZs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
