@@ -107,26 +107,65 @@ private val aiScope = CoroutineScope(Dispatchers.Main)
     }
 
     private fun handleCommand(command: String) {
-        if (command.isBlank()) return
-        append("You", command)
-        val lower = command.lowercase(Locale.ROOT)
-        val response = when {
-            lower == "help" -> "Try typing a message, tap Speak, or use Remember this to save a note locally."
-            lower.startsWith("open ") -> "Phone-control actions will be added with explicit Android permissions in a later version."
-            lower.startsWith("remember ") -> {
-                val note = command.substringAfter("remember ").trim()
-                val old = prefs.getString("notes", "") ?: ""
-                prefs.edit().putString("notes", (old + "\n• " + note).trim()).apply()
-                "Saved that note locally on this phone."
-            }
-            else -> "I'm the SARA0.1 starter prototype. Online AI is not connected yet, so I can't answer this intelligently until we configure an AI provider."
-        }
-        append("Sara", response)
-        tts?.speak(response, TextToSpeech.QUEUE_FLUSH, null, "sara_reply")
-    }
+    if (command.isBlank()) return
 
-    private fun append(who: String, message: String) {
-        transcript.append("\n\n$who: $message")
+    append("You", command)
+    val lower = command.lowercase(Locale.ROOT)
+
+    when {
+        lower == "help" -> {
+            append(
+                "Sara",
+                "Ask me a question, tap Speak, or use Remember this to save a note."
+            )
+        }
+
+        lower.startsWith("open ") -> {
+            append(
+                "Sara",
+                "Phone-control actions are not available yet."
+            )
+        }
+
+        lower.startsWith("remember ") -> {
+            val note = command.substringAfter("remember ").trim()
+            val old = prefs.getString("notes", "") ?: ""
+            prefs.edit()
+                .putString("notes", (old + "\n• " + note).trim())
+                .apply()
+
+            append("Sara", "Saved that note on this phone.")
+        }
+
+        else -> {
+            append("Sara", "Thinking...")
+
+            aiScope.launch {
+                try {
+                    val response = aiModel.generateContent(command)
+                    val answer = response.text
+                        ?: "I couldn't generate a response. Please try again."
+
+                    withContext(Dispatchers.Main) {
+                        append("Sara", answer)
+                        tts?.speak(
+                            answer,
+                            TextToSpeech.QUEUE_FLUSH,
+                            null,
+                            "sara_reply"
+                        )
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        append(
+                            "Sara",
+                            "I couldn't connect to Gemini. Please check your internet connection and Firebase App Check setup."
+                        )
+                    }
+                }
+            }
+        }
+    }
     }
 
     private fun startSpeechInput() {
