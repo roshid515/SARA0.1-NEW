@@ -34,10 +34,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
-    Firebase.initialize(context = this)
+    com.google.firebase.FirebaseApp.initializeApp(this)
 
-    Firebase.appCheck.installAppCheckProviderFactory(
-        DebugAppCheckProviderFactory.getInstance()
+com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+    .installAppCheckProviderFactory(
+        com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance(
     )
 
     tts = TextToSpeech(this, this)
