@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.Firebase
@@ -26,15 +28,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : androidx.appcompat.app.AppCompatActivity(),
-    android.speech.tts.TextToSpeech.OnInitListener {
+class MainActivity : AppCompatActivity(),
+    TextToSpeech.OnInitListener {
 
     private lateinit var messagesLayout: LinearLayout
     private lateinit var inputMessage: EditText
     private lateinit var sendButton: Button
     private lateinit var scrollView: ScrollView
 
-    private var textToSpeech: android.speech.tts.TextToSpeech? = null
+    private var textToSpeech: TextToSpeech? = null
     private var ttsReady = false
     private var isSending = false
 
@@ -75,6 +77,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { granted ->
+
             if (granted) {
                 startVoiceInput()
             } else {
@@ -85,16 +88,43 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        textToSpeech =
-            android.speech.tts.TextToSpeech(this, this)
-
-        loadNotes()
-        buildInterface()
-
-        addMessage(
-            "Hi! I'm Sara. How can I help you today?",
-            false
+        android.util.Log.d(
+            "SARA_STARTUP",
+            "onCreate started"
         )
+
+        try {
+            buildInterface()
+            loadNotes()
+
+            textToSpeech = TextToSpeech(this, this)
+
+            addMessage(
+                "Hi! I'm Sara. How can I help you today?",
+                false
+            )
+
+            android.util.Log.d(
+                "SARA_STARTUP",
+                "Startup completed successfully"
+            )
+
+        } catch (e: Exception) {
+
+            android.util.Log.e(
+                "SARA_STARTUP",
+                "Startup failed",
+                e
+            )
+
+            Toast.makeText(
+                this,
+                "Sara startup failed: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+
+            throw e
+        }
     }
 
     private fun buildInterface() {
@@ -125,7 +155,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
             setPadding(8, 8, 8, 8)
         }
 
-        // FIXED: Explicitly use ViewGroup.LayoutParams.
         scrollView = ScrollView(this).apply {
             isFillViewport = true
 
@@ -147,6 +176,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
 
         sendButton = Button(this).apply {
             text = "Send"
+
             setOnClickListener {
                 sendMessage()
             }
@@ -175,6 +205,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
             )
 
             addView(voiceButton)
+
             addView(sendButton)
         }
 
@@ -204,7 +235,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         setContentView(root)
     }
 
-    private fun addMessage(message: String, isUser: Boolean) {
+    private fun addMessage(
+        message: String,
+        isUser: Boolean
+    ) {
 
         val messageView = TextView(this).apply {
             text = if (isUser) {
@@ -252,13 +286,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         addMessage(message, true)
 
         if (message.startsWith("remember ", ignoreCase = true)) {
+
             val note = message.substringAfter(" ").trim()
 
             if (note.isNotEmpty()) {
                 notes.add(note)
                 saveNotesToStorage()
 
-                addMessage("I've saved your note on this device.", false)
+                addMessage(
+                    "I've saved your note on this device.",
+                    false
+                )
+
                 speak("I've saved your note.")
                 return
             }
@@ -272,6 +311,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         lifecycleScope.launch {
 
             try {
+
                 val response = withContext(Dispatchers.IO) {
                     aiModel.generateContent(message)
                 }
@@ -288,21 +328,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
 
                 removeLastMessage()
 
-                val details =
-                    "${e.javaClass.simpleName}: ${e.message ?: "No details"}"
-
-                addMessage(
-                    "I couldn't connect to Gemini.\n\n" +
-                    "Debug error: $details\n\n" +
-                    "Check your internet, Firebase AI Logic setup, " +
-                    "model availability, and App Check configuration.",
-                    false
-                )
-
                 android.util.Log.e(
                     "SARA_GEMINI",
                     "Gemini request failed",
                     e
+                )
+
+                addMessage(
+                    "I couldn't connect to Gemini.\n\n" +
+                    "Error: ${e.javaClass.simpleName}: " +
+                    "${e.message ?: "No details available"}\n\n" +
+                    "Please check your internet connection, Firebase AI Logic, " +
+                    "model availability, and App Check configuration.",
+                    false
                 )
 
             } finally {
@@ -313,6 +351,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
     }
 
     private fun removeLastMessage() {
+
         if (messagesLayout.childCount > 0) {
             messagesLayout.removeViewAt(
                 messagesLayout.childCount - 1
@@ -346,6 +385,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         val intent = Intent(
             RecognizerIntent.ACTION_RECOGNIZE_SPEECH
         ).apply {
+
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
@@ -365,8 +405,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         try {
             voiceLauncher.launch(intent)
         } catch (e: Exception) {
+
+            android.util.Log.e(
+                "SARA_VOICE",
+                "Voice input failed",
+                e
+            )
+
             showToast("Could not start voice input.")
-            android.util.Log.e("SARA_VOICE", "Voice error", e)
         }
     }
 
@@ -383,17 +429,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
         saveNotesToStorage()
 
         inputMessage.setText("")
-        addMessage("Note saved on this device.", false)
+
+        addMessage(
+            "Note saved on this device.",
+            false
+        )
+
         speak("Note saved.")
     }
 
     private fun saveNotesToStorage() {
+
         preferences.edit()
             .putStringSet("notes", notes.toSet())
             .apply()
     }
 
     private fun loadNotes() {
+
         notes.clear()
 
         preferences.getStringSet("notes", emptySet())
@@ -401,10 +454,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
     }
 
     private fun speak(message: String) {
+
         if (ttsReady) {
             textToSpeech?.speak(
                 message,
-                android.speech.tts.TextToSpeech.QUEUE_FLUSH,
+                TextToSpeech.QUEUE_FLUSH,
                 null,
                 "sara_response"
             )
@@ -413,22 +467,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity(),
 
     override fun onInit(status: Int) {
 
-        if (status == android.speech.tts.TextToSpeech.SUCCESS) {
-            val result = textToSpeech?.setLanguage(Locale.getDefault())
+        if (status == TextToSpeech.SUCCESS) {
+
+            val result =
+                textToSpeech?.setLanguage(Locale.getDefault())
 
             ttsReady =
-                result != android.speech.tts.TextToSpeech.LANG_MISSING_DATA &&
-                result != android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED
+                result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
         }
     }
 
     private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     override fun onDestroy() {
+
         textToSpeech?.stop()
         textToSpeech?.shutdown()
+
         super.onDestroy()
     }
     }
