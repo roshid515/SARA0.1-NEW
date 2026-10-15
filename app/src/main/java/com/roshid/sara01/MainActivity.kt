@@ -37,7 +37,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     com.google.firebase.FirebaseApp.initializeApp(this)
 
 com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
-    .installAppCheckProviderFactory(
+    .installAppCheckProviderFactory()
         com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance(
     )
 
