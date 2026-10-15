@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -30,8 +29,12 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.10.0")
 
-    implementation(platform("com.google.firebase:firebase-bom:34.5.0"))
+    // Firebase SDK version management
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+
+    // Firebase AI Logic for Gemini
     implementation("com.google.firebase:firebase-ai")
 
-    debugImplementation("com.google.firebase:firebase-app-check-debug")
+    // App Check debug provider for development
+    implementation("com.google.firebase:firebase-appcheck-debug")
 }
