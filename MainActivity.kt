@@ -17,6 +17,12 @@ import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.util.Locale
+import com.google.firebase.ai.FirebaseAI
+import com.google.firebase.ai.GenerativeBackend
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var transcript: TextView
