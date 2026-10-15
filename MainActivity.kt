@@ -17,8 +17,8 @@ import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
-import com.google.firebase.FirebaseApp
-import com.google.firebase.ai.FirebaseAI
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
@@ -51,7 +51,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     )
 
     private val aiModel by lazy {
-        FirebaseAI.getInstance(
+        Firebase.ai(
             backend = GenerativeBackend.googleAI()
         ).generativeModel("gemini-2.5-flash")
     }
@@ -59,13 +59,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        FirebaseApp.initializeApp(this)
+        // Initialize Firebase
+        Firebase.initialize(this)
 
+        // App Check debug provider for development
         FirebaseAppCheck.getInstance()
             .installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
 
+        // Initialize text-to-speech
         tts = TextToSpeech(this, this)
 
         // Main layout
@@ -85,21 +88,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         // Subtitle
         val subtitle = TextView(this).apply {
-            text = "Your personal AI assistant • Prototype 0.1"
+            text = "Your personal AI assistant"
             textSize = 14f
             setTextColor(0xFFB9C4E8.toInt())
             gravity = Gravity.CENTER
         }
 
-        // Chat transcript
+        // Conversation
         transcript = TextView(this).apply {
             textSize = 16f
             setTextColor(0xFFF4F6FF.toInt())
-            text = """
-                Sara: Hi! I'm SARA0.1.
-
-                Ask me questions using Gemini, save notes, or try voice input.
-            """.trimIndent()
+            text = "Sara: Hello! I'm SARA0.1. Ask me something!"
             setPadding(12, 16, 12, 16)
         }
 
@@ -113,7 +112,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             )
         }
 
-        // Message input
+        // Input field
         input = EditText(this).apply {
             hint = "Type a message or command"
             setHintTextColor(0xFF9BA8CC.toInt())
@@ -121,11 +120,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setSingleLine(false)
         }
 
-        // Send button
+        // Send
         val send = Button(this).apply {
             text = "Send"
+
             setOnClickListener {
                 val message = input.text.toString().trim()
+
                 if (message.isNotEmpty()) {
                     input.setText("")
                     handleCommand(message)
@@ -133,17 +134,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Voice button
+        // Voice input
         val speak = Button(this).apply {
             text = "🎙 Speak"
+
             setOnClickListener {
                 startSpeechInput()
             }
         }
 
-        // Save memory
+        // Remember
         val remember = Button(this).apply {
             text = "Remember this"
+
             setOnClickListener {
                 val note = input.text.toString().trim()
 
@@ -155,20 +158,25 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Show memory
+        // Show saved memory
         val showMemory = Button(this).apply {
             text = "Show memory"
+
             setOnClickListener {
                 val notes = prefs.getString("notes", "").orEmpty()
 
                 if (notes.isBlank()) {
                     append("Sara", "Your local memory is empty.")
                 } else {
-                    append("Sara", "Things saved on this phone:\n$notes")
+                    append(
+                        "Sara",
+                        "Things saved on this phone:\n$notes"
+                    )
                 }
             }
         }
 
+        // Build screen
         root.addView(title)
         root.addView(subtitle)
 
@@ -190,43 +198,43 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(root)
     }
 
-    // Process commands
+    // Handle commands
     private fun handleCommand(command: String) {
         if (command.isBlank()) return
 
         append("You", command)
 
-        when (command.lowercase(Locale.ROOT)) {
-            "help" -> {
+        when {
+            command.equals("help", ignoreCase = true) -> {
                 append(
                     "Sara",
-                    "Ask me a question, use Speak, or save a note."
+                    "Ask a question, tap Speak, or use Remember this."
+                )
+            }
+
+            command.startsWith("remember ", ignoreCase = true) -> {
+                val note = command.substringAfter(" ").trim()
+
+                if (note.isNotEmpty()) {
+                    saveNote(note)
+                    append("Sara", "Saved that note on this phone.")
+                }
+            }
+
+            command.startsWith("open ", ignoreCase = true) -> {
+                append(
+                    "Sara",
+                    "Phone-control actions aren't available yet."
                 )
             }
 
             else -> {
-                if (command.startsWith("remember ", ignoreCase = true)) {
-                    val note = command.substringAfter(" ", "").trim()
-
-                    if (note.isNotEmpty()) {
-                        saveNote(note)
-                        append("Sara", "Saved that note on this phone.")
-                    }
-                } else if (
-                    command.startsWith("open ", ignoreCase = true)
-                ) {
-                    append(
-                        "Sara",
-                        "Phone-control actions are not available yet."
-                    )
-                } else {
-                    askGemini(command)
-                }
+                askGemini(command)
             }
         }
     }
 
-    // Save a local note
+    // Save a note locally
     private fun saveNote(note: String) {
         val oldNotes = prefs.getString("notes", "").orEmpty()
 
@@ -260,10 +268,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     null,
                     "sara_reply"
                 )
+
             } catch (e: Exception) {
                 append(
                     "Sara",
-                    "I couldn't connect to Gemini. Check your internet connection, Firebase configuration, and App Check setup."
+                    "I couldn't connect to Gemini. Please check your internet, Firebase AI Logic setup, and App Check configuration."
                 )
             }
         }
@@ -274,7 +283,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         transcript.append("\n\n$who: $message")
     }
 
-    // Start voice recognition
+    // Start speech recognition
     private fun startSpeechInput() {
         if (
             ContextCompat.checkSelfPermission(
@@ -297,10 +306,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
+
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE,
                 Locale.getDefault()
             )
+
             putExtra(
                 RecognizerIntent.EXTRA_PROMPT,
                 "Speak to Sara"
@@ -331,7 +342,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             resultCode == RESULT_OK
         ) {
             val result = data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.getStringArrayListExtra(
+                    RecognizerIntent.EXTRA_RESULTS
+                )
                 ?.firstOrNull()
 
             if (!result.isNullOrBlank()) {
