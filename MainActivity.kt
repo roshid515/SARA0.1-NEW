@@ -25,6 +25,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private val requestAudio = 42
     private val requestSpeech = 43
     private val prefs by lazy { getSharedPreferences("sara_memory", MODE_PRIVATE) }
+    private val aiModel by lazy {
+    FirebaseAI.getInstance(GenerativeBackend.googleAI())
+        .generativeModel("gemini-2.5-flash")
+}
+
+private val aiScope = CoroutineScope(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
