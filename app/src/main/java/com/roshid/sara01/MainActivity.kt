@@ -17,9 +17,9 @@ import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
-import com.google.firebase.FirebaseApp
-import com.google.firebase.ai.FirebaseAI
-import com.google.firebase.ai.GenerativeBackend
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 
@@ -51,15 +51,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     )
 
     private val aiModel by lazy {
-        FirebaseAI.getInstance(GenerativeBackend.googleAI())
-            .generativeModel("gemini-2.5-flash")
+        Firebase.ai(
+            backend = GenerativeBackend.googleAI()
+        ).generativeModel("gemini-2.5-flash")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        FirebaseApp.initializeApp(this)
-
+        // Initialize App Check for development.
         FirebaseAppCheck.getInstance()
             .installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
@@ -67,14 +67,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         tts = TextToSpeech(this, this)
 
-        // Main layout
+        // Main screen
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 36, 24, 24)
             setBackgroundColor(0xFF101525.toInt())
         }
 
-        // App title
         val title = TextView(this).apply {
             text = "SARA0.1"
             textSize = 28f
@@ -82,42 +81,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             gravity = Gravity.CENTER
         }
 
-        // Subtitle
         val subtitle = TextView(this).apply {
-            text = "Your personal AI assistant • Prototype 0.1"
+            text = "Your Personal AI Assistant"
             textSize = 14f
             setTextColor(0xFFB9C4E8.toInt())
             gravity = Gravity.CENTER
         }
 
-        // Chat transcript
+        // Chat area
         transcript = TextView(this).apply {
             textSize = 16f
             setTextColor(0xFFF4F6FF.toInt())
-            text = """
-                Sara: Hi! I'm SARA0.1.
-
-                I can answer questions using Gemini when the Firebase configuration is working.
-
-                You can also save notes and use voice input.
-            """.trimIndent()
-
+            text = "Sara: Hello! I'm SARA0.1. Ask me anything!"
             setPadding(12, 16, 12, 16)
         }
 
         val scroll = ScrollView(this).apply {
-            addView(
-                transcript,
-                ScrollView.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
+            addView(transcript)
         }
 
         // Message input
         input = EditText(this).apply {
-            hint = "Type a message or command"
+            hint = "Type your message"
             setHintTextColor(0xFF9BA8CC.toInt())
             setTextColor(0xFFFFFFFF.toInt())
             setSingleLine(false)
@@ -146,7 +131,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Save memory button
+        // Save a memory
         val remember = Button(this).apply {
             text = "Remember this"
 
@@ -154,19 +139,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 val note = input.text.toString().trim()
 
                 if (note.isNotEmpty()) {
-                    val oldNotes =
-                        prefs.getString("notes", "").orEmpty()
-
-                    val updatedNotes =
-                        if (oldNotes.isBlank()) {
-                            "• $note"
-                        } else {
-                            "$oldNotes\n• $note"
-                        }
-
-                    prefs.edit()
-                        .putString("notes", updatedNotes)
-                        .apply()
+                    saveNote(note)
 
                     append(
                         "Sara",
@@ -183,21 +156,20 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "Show memory"
 
             setOnClickListener {
-                val notes =
-                    prefs.getString("notes", "").orEmpty()
+                val notes = prefs.getString("notes", "").orEmpty()
 
                 if (notes.isBlank()) {
                     append("Sara", "Your local memory is empty.")
                 } else {
                     append(
                         "Sara",
-                        "Things saved on this phone:\n$notes"
+                        "Your saved notes:\n$notes"
                     )
                 }
             }
         }
 
-        // Add UI elements
+        // Add components to the screen
         root.addView(title)
         root.addView(subtitle)
 
@@ -219,52 +191,40 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(root)
     }
 
-    // Process commands and send questions to Gemini
+    // Handle user commands
     private fun handleCommand(command: String) {
         if (command.isBlank()) return
 
         append("You", command)
 
-        val lower = command.lowercase(Locale.ROOT)
-
         when {
-            lower == "help" -> {
+            command.equals("help", ignoreCase = true) -> {
                 append(
                     "Sara",
-                    "Ask me a question, tap Speak, or use Remember this to save a note."
+                    "Ask a question, tap Speak, or save a note."
                 )
             }
 
-            lower.startsWith("open ") -> {
-                append(
-                    "Sara",
-                    "Phone-control actions are not available yet."
-                )
-            }
-
-            lower.startsWith("remember ") -> {
-                val note = command.substringAfter("remember ").trim()
+            command.startsWith(
+                "remember ",
+                ignoreCase = true
+            ) -> {
+                val note = command.substringAfter(" ").trim()
 
                 if (note.isNotEmpty()) {
-                    val oldNotes =
-                        prefs.getString("notes", "").orEmpty()
-
-                    val updatedNotes =
-                        if (oldNotes.isBlank()) {
-                            "• $note"
-                        } else {
-                            "$oldNotes\n• $note"
-                        }
-
-                    prefs.edit()
-                        .putString("notes", updatedNotes)
-                        .apply()
-
-                    append(
-                        "Sara",
-                        "Saved that note on this phone."
-                    )
+                    saveNote(note)
+                    append("Sara", "Saved that note on this phone.")
                 }
+            }
+
+            command.startsWith(
+                "open ",
+                ignoreCase = true
+            ) -> {
+                append(
+                    "Sara",
+                    "Phone-control actions aren't available yet."
+                )
             }
 
             else -> {
@@ -273,7 +233,22 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // Send a question to Gemini
+    // Save notes locally on this phone
+    private fun saveNote(note: String) {
+        val oldNotes = prefs.getString("notes", "").orEmpty()
+
+        val updatedNotes = if (oldNotes.isBlank()) {
+            "• $note"
+        } else {
+            "$oldNotes\n• $note"
+        }
+
+        prefs.edit()
+            .putString("notes", updatedNotes)
+            .apply()
+    }
+
+    // Communicate with Gemini
     private fun askGemini(command: String) {
         append("Sara", "Thinking...")
 
@@ -296,18 +271,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             } catch (e: Exception) {
                 append(
                     "Sara",
-                    "I couldn't connect to Gemini. Please check your internet connection, Firebase AI Logic setup, and App Check configuration."
+                    "I couldn't connect to Gemini. Please check your internet connection, Firebase AI Logic configuration, and App Check setup."
                 )
             }
         }
     }
 
-    // Add a message to the conversation
+    // Display messages
     private fun append(who: String, message: String) {
         transcript.append("\n\n$who: $message")
     }
 
-    // Start voice recognition
+    // Start speech recognition
     private fun startSpeechInput() {
         if (
             ContextCompat.checkSelfPermission(
@@ -347,12 +322,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } catch (_: Exception) {
             append(
                 "Sara",
-                "Speech recognition isn't available on this device right now."
+                "Speech recognition isn't available on this device."
             )
         }
     }
 
-    // Receive recognized speech
+    // Receive voice recognition results
     @Deprecated("Deprecated by Android, retained for compatibility.")
     override fun onActivityResult(
         requestCode: Int,
@@ -387,10 +362,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // Clean up resources
     override fun onDestroy() {
         aiJob.cancel()
-
         tts?.stop()
         tts?.shutdown()
-
         super.onDestroy()
     }
 }
