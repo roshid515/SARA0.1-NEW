@@ -36,18 +36,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     com.google.firebase.FirebaseApp.initializeApp(this)
 
-com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
-    .installAppCheckProviderFactory()
-        com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance(
-    )
+    com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
+        .installAppCheckProviderFactory(
+            com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
+        )
 
     tts = TextToSpeech(this, this)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 36, 24, 24)
-            setBackgroundColor(0xFF101525.toInt())
-        }
+    val root = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(24, 36, 24, 24)
+        setBackgroundColor(0xFF101525.toInt())
+    }
 
         val title = TextView(this).apply {
             text = "SARA0.1"
