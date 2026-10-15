@@ -1,180 +1,205 @@
 package com.roshid.sara01
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.core.app.ActivityCompat
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-
+import androidx.lifecycle.lifecycleScope
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
-import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : Activity(), TextToSpeech.OnInitListener {
+class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
-    private lateinit var transcript: TextView
-    private lateinit var input: EditText
+    private lateinit var messagesLayout: LinearLayout
+    private lateinit var inputMessage: EditText
+    private lateinit var sendButton: Button
+    private lateinit var voiceButton: Button
+    private lateinit var scrollView: ScrollView
 
-    private var tts: TextToSpeech? = null
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
+    private var isSending = false
 
-    private val requestAudio = 42
-    private val requestSpeech = 43
-
-    private val prefs by lazy {
-        getSharedPreferences("sara_memory", MODE_PRIVATE)
+    private val preferences by lazy {
+        getSharedPreferences("sara_notes", MODE_PRIVATE)
     }
 
-    private val aiJob = SupervisorJob()
-
-    private val aiScope = CoroutineScope(
-        aiJob + Dispatchers.Main
-    )
+    private val notes = mutableListOf<String>()
 
     private val aiModel by lazy {
         Firebase.ai(
             backend = GenerativeBackend.googleAI()
-        ).generativeModel("gemini-2.5-flash")
+        ).generativeModel(
+            modelName = "gemini-2.5-flash"
+        )
     }
+
+    private val speechPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (granted) {
+                startVoiceInput()
+            } else {
+                showToast("Microphone permission was not granted.")
+            }
+        }
+
+    private val speechLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+
+            if (result.resultCode == RESULT_OK) {
+                val spokenText = result.data
+                    ?.getStringArrayListExtra(
+                        RecognizerIntent.EXTRA_RESULTS
+                    )
+                    ?.firstOrNull()
+
+                if (!spokenText.isNullOrBlank()) {
+                    inputMessage.setText(spokenText)
+                    inputMessage.setSelection(inputMessage.text.length)
+                    sendMessage()
+                }
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize App Check for development.
-        FirebaseAppCheck.getInstance()
-            .installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
+        textToSpeech = TextToSpeech(this, this)
 
-        tts = TextToSpeech(this, this)
+        loadNotes()
+        buildInterface()
 
-        // Main screen
+        addMessage(
+            "Hi! I'm Sara. Send me a message and I'll try to help you.",
+            false
+        )
+    }
+
+    private fun buildInterface() {
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 36, 24, 24)
-            setBackgroundColor(0xFF101525.toInt())
+            setPadding(18, 18, 18, 12)
+            setBackgroundColor(0xFFF5F7FB.toInt())
         }
 
         val title = TextView(this).apply {
-            text = "SARA0.1"
-            textSize = 28f
-            setTextColor(0xFFE8ECFF.toInt())
+            text = "SARA 0.1"
+            textSize = 26f
             gravity = Gravity.CENTER
+            setTextColor(0xFF3347A8.toInt())
+            setPadding(8, 12, 8, 4)
         }
 
         val subtitle = TextView(this).apply {
-            text = "Your Personal AI Assistant"
+            text = "Your AI assistant"
             textSize = 14f
-            setTextColor(0xFFB9C4E8.toInt())
             gravity = Gravity.CENTER
+            setTextColor(0xFF555555.toInt())
+            setPadding(8, 0, 8, 14)
         }
 
-        // Chat area
-        transcript = TextView(this).apply {
+        messagesLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8, 8, 8, 8)
+        }
+
+        scrollView = ScrollView(this).apply {
+            isFillViewport = true
+            addView(
+                messagesLayout,
+                ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        inputMessage = EditText(this).apply {
+            hint = "Message Sara..."
             textSize = 16f
-            setTextColor(0xFFF4F6FF.toInt())
-            text = "Sara: Hello! I'm SARA0.1. Ask me anything!"
-            setPadding(12, 16, 12, 16)
-        }
-
-        val scroll = ScrollView(this).apply {
-            addView(transcript)
-        }
-
-        // Message input
-        input = EditText(this).apply {
-            hint = "Type your message"
-            setHintTextColor(0xFF9BA8CC.toInt())
-            setTextColor(0xFFFFFFFF.toInt())
             setSingleLine(false)
+            maxLines = 4
+            setPadding(12, 8, 12, 8)
         }
 
-        // Send button
-        val send = Button(this).apply {
+        sendButton = Button(this).apply {
             text = "Send"
-
             setOnClickListener {
-                val message = input.text.toString().trim()
-
-                if (message.isNotEmpty()) {
-                    input.setText("")
-                    handleCommand(message)
-                }
+                sendMessage()
             }
         }
 
-        // Voice input button
-        val speak = Button(this).apply {
-            text = "🎙 Speak"
-
+        voiceButton = Button(this).apply {
+            text = "🎤"
+            contentDescription = "Voice input"
             setOnClickListener {
-                startSpeechInput()
+                requestVoiceInput()
             }
         }
 
-        // Save a memory
-        val remember = Button(this).apply {
-            text = "Remember this"
+        inputRow.addView(
+            inputMessage,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
 
+        inputRow.addView(
+            voiceButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        inputRow.addView(
+            sendButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val notesButton = Button(this).apply {
+            text = "Save note"
             setOnClickListener {
-                val note = input.text.toString().trim()
-
-                if (note.isNotEmpty()) {
-                    saveNote(note)
-
-                    append(
-                        "Sara",
-                        "I've saved that note on this phone."
-                    )
-
-                    input.setText("")
-                }
+                saveNote()
             }
         }
 
-        // Show saved memories
-        val showMemory = Button(this).apply {
-            text = "Show memory"
-
-            setOnClickListener {
-                val notes = prefs.getString("notes", "").orEmpty()
-
-                if (notes.isBlank()) {
-                    append("Sara", "Your local memory is empty.")
-                } else {
-                    append(
-                        "Sara",
-                        "Your saved notes:\n$notes"
-                    )
-                }
-            }
-        }
-
-        // Add components to the screen
         root.addView(title)
         root.addView(subtitle)
 
         root.addView(
-            scroll,
+            scrollView,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -182,119 +207,152 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             )
         )
 
-        root.addView(input)
-        root.addView(send)
-        root.addView(speak)
-        root.addView(remember)
-        root.addView(showMemory)
+        root.addView(inputRow)
+        root.addView(notesButton)
 
         setContentView(root)
     }
 
-    // Handle user commands
-    private fun handleCommand(command: String) {
-        if (command.isBlank()) return
+    private fun addMessage(message: String, isUser: Boolean) {
 
-        append("You", command)
-
-        when {
-            command.equals("help", ignoreCase = true) -> {
-                append(
-                    "Sara",
-                    "Ask a question, tap Speak, or save a note."
-                )
+        val messageView = TextView(this).apply {
+            text = if (isUser) {
+                "You: $message"
+            } else {
+                "Sara: $message"
             }
 
-            command.startsWith(
-                "remember ",
-                ignoreCase = true
-            ) -> {
-                val note = command.substringAfter(" ").trim()
+            textSize = 16f
+            setTextColor(0xFF202124.toInt())
+            setPadding(14, 12, 14, 12)
 
-                if (note.isNotEmpty()) {
-                    saveNote(note)
-                    append("Sara", "Saved that note on this phone.")
+            setBackgroundColor(
+                if (isUser) {
+                    0xFFDCE6FF.toInt()
+                } else {
+                    0xFFFFFFFF.toInt()
                 }
-            }
+            )
+        }
 
-            command.startsWith(
-                "open ",
-                ignoreCase = true
-            ) -> {
-                append(
-                    "Sara",
-                    "Phone-control actions aren't available yet."
-                )
-            }
+        val params = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
 
-            else -> {
-                askGemini(command)
-            }
+        params.setMargins(0, 6, 0, 6)
+
+        messagesLayout.addView(messageView, params)
+
+        scrollView.post {
+            scrollView.fullScroll(View.FOCUS_DOWN)
         }
     }
 
-    // Save notes locally on this phone
-    private fun saveNote(note: String) {
-        val oldNotes = prefs.getString("notes", "").orEmpty()
+    private fun sendMessage() {
 
-        val updatedNotes = if (oldNotes.isBlank()) {
-            "• $note"
-        } else {
-            "$oldNotes\n• $note"
+        if (isSending) {
+            return
         }
 
-        prefs.edit()
-            .putString("notes", updatedNotes)
-            .apply()
-    }
+        val message = inputMessage.text.toString().trim()
 
-    // Communicate with Gemini
-    private fun askGemini(command: String) {
-        append("Sara", "Thinking...")
+        if (message.isEmpty()) {
+            return
+        }
 
-        aiScope.launch {
+        inputMessage.setText("")
+        addMessage(message, true)
+
+        val lowerMessage = message.lowercase(Locale.getDefault())
+
+        if (lowerMessage.startsWith("remember ")) {
+            val note = message.substringAfter("remember ").trim()
+
+            if (note.isNotEmpty()) {
+                notes.add(note)
+                saveNotesToStorage()
+                addMessage("I'll save that note on this device.", false)
+                speak("I'll save that note on this device.")
+                return
+            }
+        }
+
+        isSending = true
+        sendButton.isEnabled = false
+        addMessage("Thinking...", false)
+
+        lifecycleScope.launch {
+
             try {
-                val result = aiModel.generateContent(command)
+                val response = withContext(Dispatchers.IO) {
+                    aiModel.generateContent(message)
+                }
 
-                val answer = result.text
-                    ?: "Sorry, I couldn't generate a response."
+                val answer = response.text
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "I received an empty response. Please try again."
 
-                append("Sara", answer)
-
-                tts?.speak(
-                    answer,
-                    TextToSpeech.QUEUE_FLUSH,
-                    null,
-                    "sara_reply"
-                )
+                removeLastMessage()
+                addMessage(answer, false)
+                speak(answer)
 
             } catch (e: Exception) {
-                append(
-                    "Sara",
-                    "I couldn't connect to Gemini. Please check your internet connection, Firebase AI Logic configuration, and App Check setup."
+
+                removeLastMessage()
+
+                val errorDetails =
+                    "${e.javaClass.simpleName}: ${e.message ?: "No details available"}"
+
+                addMessage(
+                    "I couldn't connect to Gemini.\n\n" +
+                    "Debug error: $errorDetails\n\n" +
+                    "Check your internet connection, Firebase AI Logic setup, " +
+                    "model availability, and App Check configuration.",
+                    false
                 )
+
+                android.util.Log.e(
+                    "SARA_GEMINI",
+                    "Gemini request failed",
+                    e
+                )
+
+            } finally {
+                isSending = false
+                sendButton.isEnabled = true
             }
         }
     }
 
-    // Display messages
-    private fun append(who: String, message: String) {
-        transcript.append("\n\n$who: $message")
+    private fun removeLastMessage() {
+        if (messagesLayout.childCount > 0) {
+            messagesLayout.removeViewAt(
+                messagesLayout.childCount - 1
+            )
+        }
     }
 
-    // Start speech recognition
-    private fun startSpeechInput() {
+    private fun requestVoiceInput() {
+
         if (
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                requestAudio
+            startVoiceInput()
+        } else {
+            speechPermissionLauncher.launch(
+                Manifest.permission.RECORD_AUDIO
             )
+        }
+    }
+
+    private fun startVoiceInput() {
+
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            showToast("Voice recognition is not available on this device.")
             return
         }
 
@@ -318,52 +376,75 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         try {
-            startActivityForResult(intent, requestSpeech)
-        } catch (_: Exception) {
-            append(
-                "Sara",
-                "Speech recognition isn't available on this device."
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            showToast("Could not start voice input.")
+            android.util.Log.e("SARA_VOICE", "Voice input failed", e)
+        }
+    }
+
+    private fun saveNote() {
+
+        val note = inputMessage.text.toString().trim()
+
+        if (note.isEmpty()) {
+            showToast("Type a note first.")
+            return
+        }
+
+        notes.add(note)
+        saveNotesToStorage()
+
+        inputMessage.setText("")
+        addMessage("Note saved on this device.", false)
+        speak("Note saved.")
+    }
+
+    private fun saveNotesToStorage() {
+
+        preferences.edit()
+            .putStringSet("notes", notes.toSet())
+            .apply()
+    }
+
+    private fun loadNotes() {
+
+        notes.clear()
+
+        preferences.getStringSet("notes", emptySet())
+            ?.let { notes.addAll(it) }
+    }
+
+    private fun speak(message: String) {
+
+        if (ttsReady) {
+            textToSpeech?.speak(
+                message,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "sara_response"
             )
         }
     }
 
-    // Receive voice recognition results
-    @Deprecated("Deprecated by Android, retained for compatibility.")
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?
-    ) {
-        super.onActivityResult(requestCode, resultCode, data)
-
-        if (
-            requestCode == requestSpeech &&
-            resultCode == RESULT_OK
-        ) {
-            val result = data
-                ?.getStringArrayListExtra(
-                    RecognizerIntent.EXTRA_RESULTS
-                )
-                ?.firstOrNull()
-
-            if (!result.isNullOrBlank()) {
-                handleCommand(result)
-            }
-        }
-    }
-
-    // Initialize text-to-speech
     override fun onInit(status: Int) {
+
         if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.getDefault()
+            val result = textToSpeech?.setLanguage(Locale.getDefault())
+
+            ttsReady =
+                result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
         }
     }
 
-    // Clean up resources
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
     override fun onDestroy() {
-        aiJob.cancel()
-        tts?.stop()
-        tts?.shutdown()
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
         super.onDestroy()
     }
 }
