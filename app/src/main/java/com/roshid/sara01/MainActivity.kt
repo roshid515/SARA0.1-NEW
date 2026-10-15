@@ -8,10 +8,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.util.Log
 
-import com.google.firebase.Firebase
-import com.google.firebase.appCheck
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.initialize
 
 class MainActivity : Activity() {
 
@@ -30,18 +29,22 @@ class MainActivity : Activity() {
         setContentView(message)
 
         try {
-            Firebase.initialize(context = this)
+            FirebaseApp.initializeApp(this)
 
-            Firebase.appCheck.installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
+            FirebaseAppCheck.getInstance()
+                .installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
 
             message.text =
-                "SARA 0.1\n\nFirebase initialized.\n\nApp Check debug provider installed."
+                "SARA 0.1\n\nFirebase initialized.\nApp Check debug provider installed."
+
         } catch (e: Exception) {
             Log.e("SARA", "Firebase initialization failed", e)
+
             message.text =
-                "Firebase initialization failed.\n\n${e.javaClass.simpleName}: ${e.message}"
+                "Firebase initialization failed:\n" +
+                "${e.javaClass.simpleName}\n${e.message}"
         }
     }
 }
