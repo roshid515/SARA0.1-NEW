@@ -171,7 +171,6 @@ private val aiScope = CoroutineScope(Dispatchers.Main)
                 }
             }
         }
-        }
     }
 
     private fun append(who: String, message: String) {
