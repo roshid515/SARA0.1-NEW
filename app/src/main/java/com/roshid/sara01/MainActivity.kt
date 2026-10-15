@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : android.app.Activity(),
+class MainActivity : androidx.appcompat.app.AppCompatActivity(),
     android.speech.tts.TextToSpeech.OnInitListener {
 
     private lateinit var messagesLayout: LinearLayout
