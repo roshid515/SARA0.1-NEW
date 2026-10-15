@@ -1,10 +1,8 @@
 package com.roshid.sara01
 
-import com.google.firebase.Firebase
-import com.google.firebase.initialize
+import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.appCheck
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -34,12 +32,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
-    com.google.firebase.FirebaseApp.initializeApp(this)
+    FirebaseApp.initializeApp(this)
 
-    com.google.firebase.appcheck.FirebaseAppCheck.getInstance()
-        .installAppCheckProviderFactory(
-            com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
-        )
+FirebaseAppCheck.getInstance()
+    .installAppCheckProviderFactory(
+        DebugAppCheckProviderFactory.getInstance()
+    )
 
     tts = TextToSpeech(this, this)
 
