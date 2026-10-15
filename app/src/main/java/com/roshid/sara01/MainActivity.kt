@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -17,7 +16,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.Firebase
@@ -28,15 +26,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+class MainActivity : android.app.Activity(),
+    android.speech.tts.TextToSpeech.OnInitListener {
 
     private lateinit var messagesLayout: LinearLayout
     private lateinit var inputMessage: EditText
     private lateinit var sendButton: Button
-    private lateinit var voiceButton: Button
     private lateinit var scrollView: ScrollView
 
-    private var textToSpeech: TextToSpeech? = null
+    private var textToSpeech: android.speech.tts.TextToSpeech? = null
     private var ttsReady = false
     private var isSending = false
 
@@ -54,18 +52,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         )
     }
 
-    private val speechPermissionLauncher =
-        registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { granted ->
-            if (granted) {
-                startVoiceInput()
-            } else {
-                showToast("Microphone permission was not granted.")
-            }
-        }
-
-    private val speechLauncher =
+    private val voiceLauncher =
         registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
@@ -79,22 +66,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 if (!spokenText.isNullOrBlank()) {
                     inputMessage.setText(spokenText)
-                    inputMessage.setSelection(inputMessage.text.length)
                     sendMessage()
                 }
+            }
+        }
+
+    private val microphonePermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (granted) {
+                startVoiceInput()
+            } else {
+                showToast("Microphone permission denied.")
             }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        textToSpeech = TextToSpeech(this, this)
+        textToSpeech =
+            android.speech.tts.TextToSpeech(this, this)
 
         loadNotes()
         buildInterface()
 
         addMessage(
-            "Hi! I'm Sara. Send me a message and I'll try to help you.",
+            "Hi! I'm Sara. How can I help you today?",
             false
         )
     }
@@ -103,24 +101,23 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(18, 18, 18, 12)
+            setPadding(16, 16, 16, 12)
             setBackgroundColor(0xFFF5F7FB.toInt())
         }
 
         val title = TextView(this).apply {
             text = "SARA 0.1"
-            textSize = 26f
+            textSize = 28f
             gravity = Gravity.CENTER
             setTextColor(0xFF3347A8.toInt())
             setPadding(8, 12, 8, 4)
         }
 
         val subtitle = TextView(this).apply {
-            text = "Your AI assistant"
+            text = "Your AI Assistant"
             textSize = 14f
             gravity = Gravity.CENTER
-            setTextColor(0xFF555555.toInt())
-            setPadding(8, 0, 8, 14)
+            setPadding(8, 0, 8, 12)
         }
 
         messagesLayout = LinearLayout(this).apply {
@@ -128,26 +125,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             setPadding(8, 8, 8, 8)
         }
 
+        // FIXED: Explicitly use ViewGroup.LayoutParams.
         scrollView = ScrollView(this).apply {
             isFillViewport = true
+
             addView(
                 messagesLayout,
-                ScrollView.LayoutParams(
+                ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
         }
 
-        val inputRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
         inputMessage = EditText(this).apply {
             hint = "Message Sara..."
             textSize = 16f
-            setSingleLine(false)
             maxLines = 4
             setPadding(12, 8, 12, 8)
         }
@@ -159,37 +152,35 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-        voiceButton = Button(this).apply {
+        val voiceButton = Button(this).apply {
             text = "🎤"
             contentDescription = "Voice input"
+
             setOnClickListener {
                 requestVoiceInput()
             }
         }
 
-        inputRow.addView(
-            inputMessage,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        )
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
 
-        inputRow.addView(
-            voiceButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+            addView(
+                inputMessage,
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
             )
-        )
 
-        inputRow.addView(
-            sendButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+            addView(voiceButton)
+            addView(sendButton)
+        }
 
-        val notesButton = Button(this).apply {
-            text = "Save note"
+        val saveNoteButton = Button(this).apply {
+            text = "Save Note"
+
             setOnClickListener {
                 saveNote()
             }
@@ -208,7 +199,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         )
 
         root.addView(inputRow)
-        root.addView(notesButton)
+        root.addView(saveNoteButton)
 
         setContentView(root)
     }
@@ -251,35 +242,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun sendMessage() {
 
-        if (isSending) {
-            return
-        }
+        if (isSending) return
 
         val message = inputMessage.text.toString().trim()
 
-        if (message.isEmpty()) {
-            return
-        }
+        if (message.isEmpty()) return
 
         inputMessage.setText("")
         addMessage(message, true)
 
-        val lowerMessage = message.lowercase(Locale.getDefault())
-
-        if (lowerMessage.startsWith("remember ")) {
-            val note = message.substringAfter("remember ").trim()
+        if (message.startsWith("remember ", ignoreCase = true)) {
+            val note = message.substringAfter(" ").trim()
 
             if (note.isNotEmpty()) {
                 notes.add(note)
                 saveNotesToStorage()
-                addMessage("I'll save that note on this device.", false)
-                speak("I'll save that note on this device.")
+
+                addMessage("I've saved your note on this device.", false)
+                speak("I've saved your note.")
                 return
             }
         }
 
         isSending = true
         sendButton.isEnabled = false
+
         addMessage("Thinking...", false)
 
         lifecycleScope.launch {
@@ -291,7 +278,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 val answer = response.text
                     ?.takeIf { it.isNotBlank() }
-                    ?: "I received an empty response. Please try again."
+                    ?: "Gemini returned an empty response. Please try again."
 
                 removeLastMessage()
                 addMessage(answer, false)
@@ -301,13 +288,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 removeLastMessage()
 
-                val errorDetails =
-                    "${e.javaClass.simpleName}: ${e.message ?: "No details available"}"
+                val details =
+                    "${e.javaClass.simpleName}: ${e.message ?: "No details"}"
 
                 addMessage(
                     "I couldn't connect to Gemini.\n\n" +
-                    "Debug error: $errorDetails\n\n" +
-                    "Check your internet connection, Firebase AI Logic setup, " +
+                    "Debug error: $details\n\n" +
+                    "Check your internet, Firebase AI Logic setup, " +
                     "model availability, and App Check configuration.",
                     false
                 )
@@ -343,7 +330,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         ) {
             startVoiceInput()
         } else {
-            speechPermissionLauncher.launch(
+            microphonePermissionLauncher.launch(
                 Manifest.permission.RECORD_AUDIO
             )
         }
@@ -352,7 +339,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun startVoiceInput() {
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            showToast("Voice recognition is not available on this device.")
+            showToast("Voice recognition is unavailable.")
             return
         }
 
@@ -376,10 +363,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         try {
-            speechLauncher.launch(intent)
+            voiceLauncher.launch(intent)
         } catch (e: Exception) {
             showToast("Could not start voice input.")
-            android.util.Log.e("SARA_VOICE", "Voice input failed", e)
+            android.util.Log.e("SARA_VOICE", "Voice error", e)
         }
     }
 
@@ -401,14 +388,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun saveNotesToStorage() {
-
         preferences.edit()
             .putStringSet("notes", notes.toSet())
             .apply()
     }
 
     private fun loadNotes() {
-
         notes.clear()
 
         preferences.getStringSet("notes", emptySet())
@@ -416,11 +401,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(message: String) {
-
         if (ttsReady) {
             textToSpeech?.speak(
                 message,
-                TextToSpeech.QUEUE_FLUSH,
+                android.speech.tts.TextToSpeech.QUEUE_FLUSH,
                 null,
                 "sara_response"
             )
@@ -429,12 +413,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
 
-        if (status == TextToSpeech.SUCCESS) {
+        if (status == android.speech.tts.TextToSpeech.SUCCESS) {
             val result = textToSpeech?.setLanguage(Locale.getDefault())
 
             ttsReady =
-                result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
+                result != android.speech.tts.TextToSpeech.LANG_MISSING_DATA &&
+                result != android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED
         }
     }
 
@@ -447,4 +431,4 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         textToSpeech?.shutdown()
         super.onDestroy()
     }
-}
+    }
