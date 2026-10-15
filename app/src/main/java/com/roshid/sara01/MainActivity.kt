@@ -6,36 +6,42 @@ import android.graphics.Color
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.util.Log
+
+import com.google.firebase.Firebase
+import com.google.firebase.appCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.initialize
 
 class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val message = TextView(this).apply {
+            text = "SARA 0.1\n\nStarting Firebase..."
+            textSize = 22f
             gravity = Gravity.CENTER
-            setPadding(32, 32, 32, 32)
+            setTextColor(Color.WHITE)
+            setPadding(24, 24, 24, 24)
             setBackgroundColor(Color.rgb(13, 18, 32))
         }
 
-        val title = TextView(this).apply {
-            text = "SARA 0.1"
-            textSize = 32f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+        setContentView(message)
+
+        try {
+            Firebase.initialize(context = this)
+
+            Firebase.appCheck.installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance()
+            )
+
+            message.text =
+                "SARA 0.1\n\nFirebase initialized.\n\nApp Check debug provider installed."
+        } catch (e: Exception) {
+            Log.e("SARA", "Firebase initialization failed", e)
+            message.text =
+                "Firebase initialization failed.\n\n${e.javaClass.simpleName}: ${e.message}"
         }
-
-        val message = TextView(this).apply {
-            text = "Diagnostic test successful! 💙"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.CYAN)
-        }
-
-        layout.addView(title)
-        layout.addView(message)
-
-        setContentView(layout)
     }
 }
