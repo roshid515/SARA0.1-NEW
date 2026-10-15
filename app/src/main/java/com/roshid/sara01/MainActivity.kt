@@ -1,5 +1,10 @@
 package com.roshid.sara01
 
+import com.google.firebase.Firebase
+import com.google.firebase.initialize
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.appcheck.appCheck
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -27,8 +32,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private val prefs by lazy { getSharedPreferences("sara_memory", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        tts = TextToSpeech(this, this)
+    super.onCreate(savedInstanceState)
+
+    Firebase.initialize(context = this)
+
+    Firebase.appCheck.installAppCheckProviderFactory(
+        DebugAppCheckProviderFactory.getInstance()
+    )
+
+    tts = TextToSpeech(this, this)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
