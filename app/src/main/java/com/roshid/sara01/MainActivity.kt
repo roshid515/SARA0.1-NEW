@@ -28,72 +28,65 @@ class MainActivity : Activity() {
         showStatus("SARA 0.1\n\nInitializing Firebase...")
 
         try {
-            // Step 1: Initialize Firebase.
+            // Initialize Firebase.
             val firebaseApp = FirebaseApp.initializeApp(this)
 
             if (firebaseApp == null) {
                 showStatus(
                     "Firebase initialization failed.\n\n" +
-                    "Check that google-services.json exists in the app folder."
+                        "Check that google-services.json exists in the app folder."
                 )
-
                 Log.e(TAG, "Firebase initialization returned null")
                 return
             }
 
             Log.i(TAG, "Firebase initialized successfully")
 
-            // Step 2: Get the App Check instance.
+            // Get the App Check instance.
             val appCheck = FirebaseAppCheck.getInstance(firebaseApp)
 
-            // Step 3: Install the debug provider.
+            // Install the debug provider.
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
 
-            Log.i(TAG, "Debug provider factory installed")
+            Log.i(TAG, "App Check debug provider factory installed")
 
             showStatus(
                 "SARA 0.1\n\n" +
-                "Firebase initialized successfully.\n\n" +
-                "App Check debug provider installed.\n\n" +
-                "Requesting token..."
+                    "Firebase initialized successfully.\n\n" +
+                    "App Check debug provider installed.\n\n" +
+                    "Requesting token..."
             )
 
-            // Step 4: Request an App Check token.
+            // Request an App Check token.
             appCheck.getAppCheckToken(false)
-                .addOnSuccessListener { result ->
+                .addOnSuccessListener { _ ->
 
-                    Log.i(
-                        TAG,
-                        "App Check token request succeeded"
-                    )
+                    Log.i(TAG, "App Check token request succeeded")
 
-                    // Never print the token itself into logs.
+                    // Do not print the token or secret into logs.
                     showStatus(
                         "SARA 0.1\n\n" +
-                        "Firebase initialized successfully.\n\n" +
-                        "Debug provider installed.\n\n" +
-                        "App Check token received successfully.\n\n" +
-                        "Next: Verify the Firebase Console configuration."
+                            "Firebase initialized successfully.\n\n" +
+                            "Debug provider installed.\n\n" +
+                            "App Check token received successfully.\n\n" +
+                            "Next: Verify Firebase Console."
                     )
                 }
                 .addOnFailureListener { error ->
 
-                    Log.e(
-                        TAG,
-                        "App Check token request failed",
-                        error
-                    )
+                    Log.e(TAG, "App Check token request failed", error)
 
                     showStatus(
                         "SARA 0.1\n\n" +
-                        "Firebase initialized successfully.\n\n" +
-                        "Debug provider installed.\n\n" +
-                        "TOKEN REQUEST FAILED\n\n" +
-                        "Error:\n" +
-                        (error.localizedMessage ?: error.javaClass.simpleName) +
-                        "\n\nCheck Firebase App Check configuration."
+                            "Firebase initialized successfully.\n\n" +
+                            "Debug provider installed.\n\n" +
+                            "TOKEN REQUEST FAILED\n\n" +
+                            "Error:\n" +
+                            (error.localizedMessage
+                                ?: error.javaClass.simpleName) +
+                            "\n\nCheck Firebase App Check configuration."
                     )
                 }
 
@@ -103,9 +96,10 @@ class MainActivity : Activity() {
 
             showStatus(
                 "SARA 0.1\n\n" +
-                "SETUP FAILED\n\n" +
-                "Error:\n" +
-                (error.localizedMessage ?: error.javaClass.simpleName)
+                    "SETUP FAILED\n\n" +
+                    "Error:\n" +
+                    (error.localizedMessage
+                        ?: error.javaClass.simpleName)
             )
         }
     }
@@ -141,15 +135,12 @@ class MainActivity : Activity() {
             )
         )
 
-        val scrollView = ScrollView(this)
+        val scrollView = ScrollView(this).apply {
+            isFillViewport = true
+        }
 
-        scrollView.addView(
-            statusText,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT
-            )
-        )
+        // Add the status text using the ScrollView's default layout parameters.
+        scrollView.addView(statusText)
 
         root.addView(
             scrollView,
