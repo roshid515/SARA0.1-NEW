@@ -40,15 +40,11 @@ class MainActivity : Activity() {
                     DebugAppCheckProviderFactory.getInstance()
                 )
 
-            output.text = """
-                SARA 0.1
-
-                Firebase initialized successfully.
-
-                App Check Debug Provider installed.
-
-                Tap Check App Check Token first.
-            """.trimIndent()
+            output.text =
+                "SARA 0.1\n\n" +
+                "Firebase initialized.\n" +
+                "App Check Debug Provider installed.\n\n" +
+                "Tap Check App Check Token first."
 
         } catch (e: Exception) {
             output.text = "Initialization failed:\n\n" +
@@ -65,51 +61,117 @@ class MainActivity : Activity() {
     }
 
     private fun buildUI() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
-            gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.rgb(18, 18, 30))
-        }
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setPadding(24, 24, 24, 24)
+        root.gravity = Gravity.CENTER_HORIZONTAL
+        root.setBackgroundColor(Color.rgb(18, 18, 30))
 
-        val title = TextView(this).apply {
-            text = "SARA 0.1"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        }
+        val title = TextView(this)
+        title.text = "SARA 0.1"
+        title.textSize = 28f
+        title.setTextColor(Color.WHITE)
+        title.gravity = Gravity.CENTER
 
-        output = TextView(this).apply {
-            text = "Starting SARA..."
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            setPadding(0, 24, 0, 24)
-        }
+        output = TextView(this)
+        output.text = "Starting SARA..."
+        output.textSize = 16f
+        output.setTextColor(Color.WHITE)
+        output.setPadding(0, 24, 0, 24)
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-        }
+        val scroll = ScrollView(this)
+        scroll.isFillViewport = true
         scroll.addView(output)
 
-        input = EditText(this).apply {
-            hint = "Ask Sara something..."
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            setSingleLine(false)
-            minLines = 2
-            maxLines = 5
-        }
+        input = EditText(this)
+        input.hint = "Ask Sara something..."
+        input.setTextColor(Color.WHITE)
+        input.setHintTextColor(Color.LTGRAY)
+        input.setSingleLine(false)
+        input.minLines = 2
+        input.maxLines = 5
 
-        checkButton = Button(this).apply {
-            text = "Check App Check Token"
-        }
+        checkButton = Button(this)
+        checkButton.text = "Check App Check Token"
 
-        sendButton = Button(this).apply {
-            text = "Send to Gemini"
-        }
+        sendButton = Button(this)
+        sendButton.text = "Send to Gemini"
 
         root.addView(title)
 
         root.addView(
             scroll,
-            Linear
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        root.addView(input)
+        root.addView(checkButton)
+        root.addView(sendButton)
+
+        setContentView(root)
+    }
+
+    private fun checkAppCheckToken() {
+        checkButton.isEnabled = false
+        output.text = "Requesting App Check token...\nPlease wait."
+
+        FirebaseAppCheck.getInstance()
+            .getAppCheckToken(false)
+            .addOnSuccessListener { tokenResult ->
+                output.text =
+                    "APP CHECK TOKEN SUCCESS\n\n" +
+                    "Token retrieved successfully.\n\n" +
+                    "Token length: ${tokenResult.token.length}\n\n" +
+                    "The secret token is not displayed.\n\n" +
+                    "Now test Gemini."
+                checkButton.isEnabled = true
+            }
+            .addOnFailureListener { error ->
+                output.text =
+                    "APP CHECK TOKEN REQUEST FAILED\n\n" +
+                    (error.message ?: error.javaClass.simpleName)
+                checkButton.isEnabled = true
+            }
+    }
+
+    private fun sendMessage() {
+        val prompt = input.text.toString().trim()
+
+        if (prompt.isEmpty()) {
+            output.text = "Please type a message first."
+            return
+        }
+
+        sendButton.isEnabled = false
+        output.text = "Connecting to Gemini AI...\nPlease wait."
+
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val ai = FirebaseAI.getInstance(
+                    backend = GenerativeBackend.googleAI()
+                )
+
+                val model = ai.generativeModel(
+                    modelName = "gemini-2.5-flash"
+                )
+
+                val response = model.generateContent(prompt)
+
+                output.text = response.text
+                    ?: "Gemini returned an empty response."
+
+            } catch (e: Exception) {
+                output.text =
+                    "GEMINI REQUEST FAILED\n\n" +
+                    (e.message ?: e.javaClass.simpleName)
+
+            } finally {
+                sendButton.isEnabled = true
+            }
+        }
+    }
+}
