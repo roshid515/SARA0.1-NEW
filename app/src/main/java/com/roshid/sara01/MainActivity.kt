@@ -24,6 +24,7 @@ class MainActivity : Activity() {
 
     private lateinit var output: TextView
     private lateinit var input: EditText
+    private lateinit var checkButton: Button
     private lateinit var sendButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +35,6 @@ class MainActivity : Activity() {
         try {
             FirebaseApp.initializeApp(this)
 
-            // Install App Check before making Firebase AI requests.
             FirebaseAppCheck.getInstance()
                 .installAppCheckProviderFactory(
                     DebugAppCheckProviderFactory.getInstance()
@@ -47,14 +47,16 @@ class MainActivity : Activity() {
 
                 App Check Debug Provider installed.
 
-                Gemini AI test is ready.
-
-                Type a message below and tap Send to Gemini.
+                Tap Check App Check Token first.
             """.trimIndent()
 
         } catch (e: Exception) {
             output.text = "Initialization failed:\n\n" +
                 (e.message ?: e.javaClass.simpleName)
+        }
+
+        checkButton.setOnClickListener {
+            checkAppCheckToken()
         }
 
         sendButton.setOnClickListener {
@@ -87,7 +89,6 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
         }
-
         scroll.addView(output)
 
         input = EditText(this).apply {
@@ -99,79 +100,16 @@ class MainActivity : Activity() {
             maxLines = 5
         }
 
+        checkButton = Button(this).apply {
+            text = "Check App Check Token"
+        }
+
         sendButton = Button(this).apply {
             text = "Send to Gemini"
         }
 
-        root.addView(
-            title,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
+        root.addView(title)
 
         root.addView(
             scroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        root.addView(
-            input,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            sendButton,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        setContentView(root)
-    }
-
-    private fun sendMessage() {
-        val prompt = input.text.toString().trim()
-
-        if (prompt.isEmpty()) {
-            output.text = "Please type a message first."
-            return
-        }
-
-        sendButton.isEnabled = false
-        output.text = "Connecting to Gemini AI...\nPlease wait."
-
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val ai = FirebaseAI.getInstance(
-                    backend = GenerativeBackend.googleAI()
-                )
-
-                val model = ai.generativeModel(
-                    modelName = "gemini-2.5-flash"
-                )
-
-                val response = model.generateContent(prompt)
-
-                output.text = response.text
-                    ?: "Gemini returned an empty response."
-
-            } catch (e: Exception) {
-                output.text = "Gemini request failed:\n\n" +
-                    (e.message ?: e.javaClass.simpleName)
-
-            } finally {
-                sendButton.isEnabled = true
-            }
-        }
-    }
-}
+            Linear
