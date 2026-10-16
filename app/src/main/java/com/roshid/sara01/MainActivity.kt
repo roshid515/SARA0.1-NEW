@@ -10,9 +10,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
+import androidx.lifecycle.lifecycleScope
+
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.GenerativeBackend
+
+import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
 
@@ -28,16 +32,19 @@ class MainActivity : Activity() {
         try {
             FirebaseApp.initializeApp(this)
 
-            output.text =
-                "SARA 0.1\n\n" +
-                "Firebase initialized.\n" +
-                "Gemini test is ready.\n\n" +
-                "Type a message and tap Send."
+            output.text = """
+                SARA 0.1
+                
+                Firebase initialized successfully.
+                
+                Gemini AI test is ready.
+                
+                Type a message below and tap Send to Gemini.
+            """.trimIndent()
 
         } catch (e: Exception) {
-            output.text =
-                "Firebase initialization failed:\n" +
-                (e.localizedMessage ?: "Unknown error")
+            output.text = "Firebase initialization failed:\n\n" +
+                (e.message ?: e.javaClass.simpleName)
         }
 
         sendButton.setOnClickListener {
@@ -61,13 +68,16 @@ class MainActivity : Activity() {
         }
 
         output = TextView(this).apply {
-            text = "Starting..."
+            text = "Starting SARA..."
             textSize = 16f
             setTextColor(Color.WHITE)
             setPadding(0, 24, 0, 24)
         }
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+        }
+
         scroll.addView(output)
 
         input = EditText(this).apply {
@@ -76,13 +86,21 @@ class MainActivity : Activity() {
             setHintTextColor(Color.LTGRAY)
             setSingleLine(false)
             minLines = 2
+            maxLines = 5
         }
 
         sendButton = Button(this).apply {
             text = "Send to Gemini"
         }
 
-        root.addView(title)
+        root.addView(
+            title,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         root.addView(
             scroll,
             LinearLayout.LayoutParams(
@@ -91,8 +109,22 @@ class MainActivity : Activity() {
                 1f
             )
         )
-        root.addView(input)
-        root.addView(sendButton)
+
+        root.addView(
+            input,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            sendButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         setContentView(root)
     }
@@ -106,38 +138,30 @@ class MainActivity : Activity() {
         }
 
         sendButton.isEnabled = false
-        output.text = "Testing Gemini...\nPlease wait."
+        output.text = "Testing Gemini AI...\nPlease wait."
 
-        try {
-            val ai = FirebaseAI.getInstance(
-                backend = GenerativeBackend.googleAI()
-            )
+        lifecycleScope.launch {
+            try {
+                val ai = FirebaseAI.getInstance(
+                    backend = GenerativeBackend.googleAI()
+                )
 
-            val model = ai.generativeModel(
-                modelName = "gemini-2.5-flash"
-            )
+                val model = ai.generativeModel(
+                    modelName = "gemini-2.5-flash"
+                )
 
-            model.generateContent(prompt)
-                .addOnSuccessListener { response ->
-                    output.text =
-                        response.text ?: "Gemini returned an empty response."
+                val response = model.generateContent(prompt)
 
-                    sendButton.isEnabled = true
-                }
-                .addOnFailureListener { error ->
-                    output.text =
-                        "Gemini request failed:\n\n" +
-                        (error.localizedMessage ?: error.javaClass.simpleName)
+                output.text = response.text
+                    ?: "Gemini returned an empty response."
 
-                    sendButton.isEnabled = true
-                }
+            } catch (e: Exception) {
+                output.text = "Gemini request failed:\n\n" +
+                    (e.message ?: e.javaClass.simpleName)
 
-        } catch (e: Exception) {
-            output.text =
-                "Error:\n\n" +
-                (e.localizedMessage ?: e.javaClass.simpleName)
-
-            sendButton.isEnabled = true
+            } finally {
+                sendButton.isEnabled = true
+            }
         }
     }
 }
