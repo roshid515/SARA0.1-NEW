@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -17,7 +18,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.util.Log
 
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -50,7 +50,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         private const val MEMORY_KEY = "saved_memory"
     }
 
-    // A coroutine scope owned by this Activity.
     private val activityScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main
     )
@@ -58,6 +57,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var chatText: TextView
     private lateinit var inputText: EditText
     private lateinit var sendButton: Button
+    private lateinit var scrollView: ScrollView
 
     private lateinit var preferences: SharedPreferences
 
@@ -87,9 +87,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         addMessage(
             "Sara",
-            "Hello! I'm Sara, your SARA0.1 assistant. 😊\n\n" +
-                "You can type a message, use voice input, or ask me " +
-                "to remember something on this device."
+            "Hello! I'm Sara, your SARA0.1 assistant! 😊\n\n" +
+                "You can type messages, speak to me, and save simple " +
+                "memories on this device."
         )
 
         requestMicrophonePermissionIfNeeded()
@@ -137,11 +137,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = ""
         }
 
-        val scrollView = ScrollView(this).apply {
+        scrollView = ScrollView(this).apply {
             isFillViewport = true
+
+            // FIX: Use ViewGroup.LayoutParams here.
             addView(
                 chatText,
-                ScrollView.LayoutParams(
+                ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
@@ -174,6 +176,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         sendButton = Button(this).apply {
             text = "Send"
+
             setOnClickListener {
                 sendMessage()
             }
@@ -181,6 +184,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val voiceButton = Button(this).apply {
             text = "🎤 Speak"
+
             setOnClickListener {
                 startVoiceInput()
             }
@@ -188,6 +192,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val memoryButton = Button(this).apply {
             text = "Show Memory"
+
             setOnClickListener {
                 showMemory()
             }
@@ -195,6 +200,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val clearMemoryButton = Button(this).apply {
             text = "Clear Memory"
+
             setOnClickListener {
                 clearMemory()
             }
@@ -208,19 +214,24 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(root)
     }
 
-    private fun addMessage(sender: String, message: String) {
+    private fun addMessage(
+        sender: String,
+        message: String
+    ) {
         runOnUiThread {
             chatText.append("$sender: $message\n\n")
+
+            scrollView.post {
+                scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+            }
         }
     }
 
     private fun setBusy(busy: Boolean) {
         isThinking = busy
 
-        runOnUiThread {
-            sendButton.isEnabled = !busy
-            sendButton.text = if (busy) "Thinking..." else "Send"
-        }
+        sendButton.isEnabled = !busy
+        sendButton.text = if (busy) "Thinking..." else "Send"
     }
 
     private fun sendMessage() {
@@ -234,6 +245,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "Type a message first.",
                 Toast.LENGTH_SHORT
             ).show()
+
             return
         }
 
@@ -260,14 +272,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 ).orEmpty()
 
                 val prompt = """
-                    You are Sara, the helpful AI assistant inside SARA0.1.
+                    You are Sara, the AI assistant inside SARA0.1.
 
-                    Be friendly, clear, respectful, and honest.
-                    Give useful answers.
-                    Do not claim to remember something unless it appears
-                    in the saved memories or current conversation.
+                    Be friendly, helpful, clear, and honest.
+                    Do not claim to remember information that is not provided.
 
-                    Saved memories from this device:
+                    Memories saved on this device:
                     ${if (savedMemory.isBlank()) "None" else savedMemory}
 
                     User message:
@@ -281,10 +291,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 val reply = response.text
                     ?.trim()
                     ?.takeIf { it.isNotEmpty() }
-                    ?: "I couldn't generate a text response. Please try again."
+                    ?: "I couldn't generate a response. Please try again."
 
                 removeThinkingMessage()
+
                 addMessage("Sara", reply)
+
                 speak(reply)
 
             } catch (e: Exception) {
@@ -294,8 +306,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 addMessage(
                     "Sara",
-                    "I couldn't get a response from Gemini. Please check " +
-                        "your internet connection, Firebase configuration, " +
+                    "I couldn't connect to Gemini. Please check your " +
+                        "internet connection, Firebase configuration, " +
                         "App Check registration, and model availability."
                 )
 
@@ -314,7 +326,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
     }
 
-    private fun handleMemoryCommand(message: String): Boolean {
+    private fun handleMemoryCommand(
+        message: String
+    ): Boolean {
         val trimmed = message.trim()
         val lower = trimmed.lowercase(Locale.ROOT)
 
@@ -336,6 +350,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         "Sara",
                         "Tell me what you'd like me to remember."
                     )
+
                     return true
                 }
 
@@ -356,7 +371,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 addMessage(
                     "Sara",
-                    "I've saved that in this device's local memory. 💙"
+                    "Saved to this device's local memory. 💙"
                 )
 
                 return true
@@ -385,7 +400,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } else {
             addMessage(
                 "Sara",
-                "Here's what is saved in local memory:\n$saved"
+                "Memories saved on this device:\n$saved"
             )
         }
     }
@@ -397,7 +412,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         addMessage(
             "Sara",
-            "Local memory has been cleared."
+            "Local memory cleared."
         )
     }
 
@@ -423,6 +438,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "Speech recognition is unavailable on this device.",
                 Toast.LENGTH_LONG
             ).show()
+
             return
         }
 
@@ -461,7 +477,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 REQUEST_SPEECH
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Could not start speech recognition.", e)
+            Log.e(TAG, "Speech recognition could not start.", e)
 
             Toast.makeText(
                 this,
@@ -495,7 +511,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             if (!spokenText.isNullOrBlank()) {
                 inputText.setText(spokenText)
-                inputText.setSelection(inputText.text.length)
+
+                inputText.setSelection(
+                    inputText.text.length
+                )
             }
         }
     }
@@ -518,7 +537,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         } else {
             ttsReady = false
-            Log.e(TAG, "Text-to-speech initialization failed.")
+
+            Log.e(
+                TAG,
+                "Text-to-speech initialization failed."
+            )
         }
     }
 
