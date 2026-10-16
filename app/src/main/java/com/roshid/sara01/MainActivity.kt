@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -20,7 +21,7 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
-import com.google.firebase.FirebaseApp
+import com.google.firebase.Firebase
 import com.google.firebase.ai.GenerativeBackend
 import com.google.firebase.ai.ai
 import com.google.firebase.appcheck.FirebaseAppCheck
@@ -41,7 +42,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var input: EditText
     private lateinit var sendButton: Button
     private lateinit var scrollView: ScrollView
-    private lateinit var memory: android.content.SharedPreferences
+    private lateinit var memory: SharedPreferences
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -68,14 +69,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             Context.MODE_PRIVATE
         )
 
+        buildInterface()
+
         tts = TextToSpeech(this, this)
 
-        buildInterface()
-        initializeFirebaseAndAppCheck()
+        initializeFirebase()
 
         append(
             "Sara",
-            "Hello! I'm Sara. Ask me a question or use the Voice button."
+            "Hello! I'm Sara. Ask me a question or tap Voice."
         )
     }
 
@@ -120,12 +122,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         root.addView(input)
 
-        val sendRow = LinearLayout(this).apply {
+        val messageRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
         sendButton = Button(this).apply {
             text = "Send"
+
             setOnClickListener {
                 val message = input.text.toString().trim()
 
@@ -143,23 +146,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        sendRow.addView(
+        messageRow.addView(
             sendButton,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        sendRow.addView(
+        messageRow.addView(
             voiceButton,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        root.addView(sendRow)
+        root.addView(messageRow)
 
-        val toolsRow = LinearLayout(this).apply {
+        val utilityRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
-        val diagnosticButton = Button(this).apply {
+        val diagnosticsButton = Button(this).apply {
             text = "Diagnostics"
             setOnClickListener {
                 runDiagnostics()
@@ -173,98 +176,99 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        toolsRow.addView(
-            diagnosticButton,
+        utilityRow.addView(
+            diagnosticsButton,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        toolsRow.addView(
+        utilityRow.addView(
             memoryButton,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        root.addView(toolsRow)
+        root.addView(utilityRow)
 
         setContentView(root)
     }
 
-    /*
-     * DEVELOPMENT ONLY:
-     * Install the Firebase App Check debug provider before
-     * making Firebase AI Logic requests.
-     */
-    private fun initializeFirebaseAndAppCheck() {
+    private fun initializeFirebase() {
         try {
-            val firebaseApp = FirebaseApp.getInstance()
+            /*
+             * Initialize Firebase before using Firebase services.
+             */
+            Firebase.initialize(context = this)
 
-            val appCheck = FirebaseAppCheck.getInstance()
-
-            appCheck.installAppCheckProviderFactory(
+            /*
+             * Development builds only.
+             * Install the debug provider before requesting
+             * App Check tokens or using Firebase AI Logic.
+             */
+            Firebase.appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
 
-            firebaseReady = firebaseApp.name.isNotEmpty()
+            firebaseReady = true
 
             append(
                 "Diagnostics",
-                "Firebase initialized: $firebaseReady"
+                "Firebase initialization: PASS"
             )
 
-            requestDebugToken()
+            requestAppCheckToken()
 
         } catch (e: Exception) {
             firebaseReady = false
 
             append(
                 "Diagnostics",
-                "Firebase/App Check initialization failed.\n" +
-                    "Error: ${safeError(e)}"
+                "Firebase initialization failed.\n" +
+                    "Type: ${e.javaClass.simpleName}\n" +
+                    "Details: ${safeError(e)}"
             )
         }
     }
 
-    /*
-     * Request an App Check token and display it in the app.
-     * On a fresh installation, the debug provider may first
-     * need to generate a token and log its registration value.
-     */
-    private fun requestDebugToken() {
+    private fun requestAppCheckToken() {
         try {
             FirebaseAppCheck.getInstance()
                 .getAppCheckToken(false)
                 .addOnSuccessListener { result ->
                     append(
-                        "Firebase App Check",
-                        "Token request succeeded.\n\n" +
-                            "Token:\n${result.token}"
+                        "App Check",
+                        "App Check token request: SUCCESS\n" +
+                            "A token was received.\n" +
+                            "Token length: ${result.token.length}"
                     )
                 }
                 .addOnFailureListener { error ->
                     append(
-                        "Firebase App Check",
+                        "App Check",
                         "Token request failed.\n" +
-                            "Error: ${safeError(error)}\n\n" +
-                            "Check debug-token registration and App Check configuration."
+                            "Type: ${error.javaClass.simpleName}\n" +
+                            "Details: ${safeError(error)}"
                     )
                 }
         } catch (e: Exception) {
             append(
-                "Firebase App Check",
-                "Could not request token: ${safeError(e)}"
+                "App Check",
+                "Token request error: ${safeError(e)}"
             )
         }
     }
 
     private fun handleCommand(command: String) {
-        val text = command.trim()
+        val message = command.trim()
 
-        if (text.isEmpty()) return
+        if (message.isEmpty()) return
 
-        append("You", text)
+        append("You", message)
 
         when {
-            text.startsWith("remember ", ignoreCase = true) -> {
-                val note = text.substringAfter("remember ").trim()
+            message.startsWith(
+                "remember ",
+                ignoreCase = true
+            ) -> {
+                val note = message.substringAfter("remember ").trim()
 
                 if (note.isNotEmpty()) {
                     saveMemory(note)
@@ -274,24 +278,36 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 return
             }
 
-            text.equals("show memory", ignoreCase = true) -> {
+            message.equals(
+                "show memory",
+                ignoreCase = true
+            ) -> {
                 showMemory()
                 return
             }
 
-            text.equals("clear memory", ignoreCase = true) -> {
+            message.equals(
+                "clear memory",
+                ignoreCase = true
+            ) -> {
                 memory.edit().clear().apply()
                 append("Sara", "Local memory cleared.")
                 return
             }
 
-            text.equals("diagnostics", ignoreCase = true) -> {
+            message.equals(
+                "diagnostics",
+                ignoreCase = true
+            ) -> {
                 runDiagnostics()
                 return
             }
 
-            text.equals("show debug token", ignoreCase = true) -> {
-                requestDebugToken()
+            message.equals(
+                "show debug token",
+                ignoreCase = true
+            ) -> {
+                requestAppCheckToken()
                 return
             }
         }
@@ -304,7 +320,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (!firebaseReady) {
             append(
                 "Sara",
-                "Firebase has not initialized. Tap Diagnostics for details."
+                "Firebase initialization failed. Tap Diagnostics."
             )
             return
         }
@@ -317,15 +333,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         appScope.launch {
             try {
                 val response = withContext(Dispatchers.IO) {
-                    model.generateContent(
-                        """
-                        You are Sara, a helpful Android voice assistant.
-                        Answer naturally and clearly.
-
-                        User message:
-                        $text
-                        """.trimIndent()
-                    )
+                    model.generateContent(message)
                 }
 
                 removeThinkingMessage()
@@ -334,8 +342,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 if (answer.isNullOrEmpty()) {
                     append(
-                        "Sara Diagnostics",
-                        "Gemini returned an empty response."
+                        "Diagnostics",
+                        "Gemini returned no text."
                     )
                 } else {
                     append("Sara", answer)
@@ -346,9 +354,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 removeThinkingMessage()
 
                 append(
-                    "Sara Diagnostics",
-                    "Gemini request failed.\n" +
-                        "Exception: ${e.javaClass.simpleName}\n" +
+                    "Gemini Diagnostics",
+                    "Request failed.\n" +
+                        "Type: ${e.javaClass.simpleName}\n" +
                         "Details: ${safeError(e)}"
                 )
             } finally {
@@ -363,30 +371,30 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             "SARA Diagnostics",
             """
             Firebase initialized: $firebaseReady
-            Gemini model: gemini-2.5-flash
+            Model: gemini-2.5-flash
             Text-to-speech ready: $ttsReady
-            Request in progress: $requestInProgress
+            Gemini request in progress: $requestInProgress
 
-            To request an App Check token, type:
-            show debug token
+            Type "show debug token" to request an App Check token.
 
-            To test Gemini, send:
-            Hello Sara
+            Send "Hello Sara" to test Gemini.
             """.trimIndent()
         )
+
+        requestAppCheckToken()
     }
 
     private fun saveMemory(note: String) {
-        val oldNotes = memory.getString("notes", "") ?: ""
+        val previous = memory.getString("notes", "") ?: ""
 
-        val updatedNotes = if (oldNotes.isBlank()) {
+        val updated = if (previous.isBlank()) {
             note
         } else {
-            "$oldNotes\n$note"
+            "$previous\n$note"
         }
 
         memory.edit()
-            .putString("notes", updatedNotes)
+            .putString("notes", updated)
             .apply()
     }
 
@@ -453,10 +461,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
                 )
+
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE,
                     Locale.getDefault()
                 )
+
                 putExtra(
                     RecognizerIntent.EXTRA_PROMPT,
                     "Speak to Sara"
@@ -473,4 +483,88 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    @Deprecated("Uses
+    @Deprecated("Legacy speech activity result API")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (
+            requestCode == requestSpeech &&
+            resultCode == RESULT_OK
+        ) {
+            val results = data?.getStringArrayListExtra(
+                RecognizerIntent.EXTRA_RESULTS
+            )
+
+            val spokenText = results?.firstOrNull()
+
+            if (!spokenText.isNullOrBlank()) {
+                handleCommand(spokenText)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        if (requestCode == requestAudio) {
+            if (
+                grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            ) {
+                launchSpeechRecognizer()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Microphone permission is required for voice input.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val languageResult =
+                tts?.setLanguage(Locale.getDefault())
+
+            ttsReady =
+                languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                languageResult != TextToSpeech.LANG_NOT_SUPPORTED
+        } else {
+            ttsReady = false
+        }
+    }
+
+    private fun speak(text: String) {
+        if (ttsReady) {
+            tts?.speak(
+                text,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "SARA_RESPONSE"
+            )
+        }
+    }
+
+    override fun onDestroy() {
+        appScope.cancel()
+
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+
+        super.onDestroy()
+    }
+}
