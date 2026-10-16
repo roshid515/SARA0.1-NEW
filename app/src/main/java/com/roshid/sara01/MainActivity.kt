@@ -13,6 +13,8 @@ import android.widget.TextView
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,10 +34,18 @@ class MainActivity : Activity() {
         try {
             FirebaseApp.initializeApp(this)
 
+            // Install App Check before making Firebase AI requests.
+            FirebaseAppCheck.getInstance()
+                .installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
+
             output.text = """
                 SARA 0.1
 
                 Firebase initialized successfully.
+
+                App Check Debug Provider installed.
 
                 Gemini AI test is ready.
 
@@ -43,7 +53,7 @@ class MainActivity : Activity() {
             """.trimIndent()
 
         } catch (e: Exception) {
-            output.text = "Firebase initialization failed:\n\n" +
+            output.text = "Initialization failed:\n\n" +
                 (e.message ?: e.javaClass.simpleName)
         }
 
