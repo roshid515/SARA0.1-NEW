@@ -2,15 +2,15 @@ package com.roshid.sara01
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -20,17 +20,16 @@ import android.widget.Toast
 
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 
 import com.google.firebase.Firebase
-import com.google.firebase.ai.GenerativeBackend
+import com.google.firebase.initialize
 import com.google.firebase.ai.ai
-import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.appcheck.appCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -38,403 +37,356 @@ import java.util.Locale
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
-    private lateinit var transcript: TextView
-    private lateinit var input: EditText
+    companion object {
+        private const val REQUEST_MICROPHONE = 42
+        private const val REQUEST_SPEECH = 43
+        private const val MEMORY_FILE = "sara_memory"
+        private const val MEMORY_KEY = "saved_memory"
+    }
+
+    private lateinit var chatText: TextView
+    private lateinit var inputText: EditText
     private lateinit var sendButton: Button
-    private lateinit var scrollView: ScrollView
-    private lateinit var memory: SharedPreferences
+    private lateinit var voiceButton: Button
+    private lateinit var memoryButton: Button
+    private lateinit var clearMemoryButton: Button
 
-    private var tts: TextToSpeech? = null
+    private lateinit var preferences: SharedPreferences
+
+    private var textToSpeech: TextToSpeech? = null
     private var ttsReady = false
-    private var firebaseReady = false
-    private var requestInProgress = false
-
-    private val requestSpeech = 43
-    private val requestAudio = 42
-
-    private val appScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var isThinking = false
 
     private val model by lazy {
         Firebase.ai(
             backend = GenerativeBackend.googleAI()
-        ).generativeModel("gemini-2.5-flash")
+        ).generativeModel("gemini-3.8-flash")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        memory = getSharedPreferences(
-            "sara_memory",
-            Context.MODE_PRIVATE
+        preferences = getSharedPreferences(
+            MEMORY_FILE,
+            MODE_PRIVATE
         )
 
-        buildInterface()
+        // Initialize Firebase.
+        try {
+            Firebase.initialize(context = this)
 
-        tts = TextToSpeech(this, this)
+            // Debug App Check is for development/testing.
+            Firebase.appCheck.installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance()
+            )
+        } catch (e: Exception) {
+            android.util.Log.e(
+                "SARA0.1",
+                "Firebase initialization error",
+                e
+            )
+        }
 
-        initializeFirebase()
+        textToSpeech = TextToSpeech(this, this)
 
-        append(
-            "Sara",
-            "Hello! I'm Sara. Ask me a question or tap Voice."
+        createInterface()
+
+        addMessage(
+            "SARA0.1",
+            "Hello! I'm Sara. You can type or speak to me. " +
+                "I can answer using Gemini AI and save simple memories on this device."
         )
+
+        requestMicrophonePermissionIfNeeded()
     }
 
-    private fun buildInterface() {
+    private fun createInterface() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 16, 16, 12)
+            setPadding(20, 20, 20, 20)
         }
 
         val title = TextView(this).apply {
             text = "SARA0.1"
-            textSize = 26f
+            textSize = 28f
             gravity = Gravity.CENTER
             setPadding(8, 12, 8, 16)
         }
 
-        root.addView(title)
+        root.addView(
+            title,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
-        scrollView = ScrollView(this)
-
-        transcript = TextView(this).apply {
+        chatText = TextView(this).apply {
             textSize = 16f
             setPadding(8, 8, 8, 8)
+            text = ""
         }
 
-        scrollView.addView(transcript)
+        val scrollView = ScrollView(this).apply {
+            addView(chatText)
+        }
 
         root.addView(
             scrollView,
             LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
             )
         )
 
-        input = EditText(this).apply {
-            hint = "Message Sara..."
+        inputText = EditText(this).apply {
+            hint = "Type a message..."
             textSize = 16f
+            minLines = 1
             maxLines = 4
         }
 
-        root.addView(input)
-
-        val messageRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        root.addView(
+            inputText,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         sendButton = Button(this).apply {
             text = "Send"
-
             setOnClickListener {
-                val message = input.text.toString().trim()
-
-                if (message.isNotEmpty()) {
-                    input.setText("")
-                    handleCommand(message)
-                }
+                sendMessage()
             }
         }
 
-        val voiceButton = Button(this).apply {
-            text = "Voice"
+        voiceButton = Button(this).apply {
+            text = "Speak"
             setOnClickListener {
-                startSpeechInput()
+                startVoiceInput()
             }
         }
 
-        messageRow.addView(
-            sendButton,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
-
-        messageRow.addView(
-            voiceButton,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
-
-        root.addView(messageRow)
-
-        val utilityRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-
-        val diagnosticsButton = Button(this).apply {
-            text = "Diagnostics"
-            setOnClickListener {
-                runDiagnostics()
-            }
-        }
-
-        val memoryButton = Button(this).apply {
-            text = "Memory"
+        memoryButton = Button(this).apply {
+            text = "Show Memory"
             setOnClickListener {
                 showMemory()
             }
         }
 
-        utilityRow.addView(
-            diagnosticsButton,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
+        clearMemoryButton = Button(this).apply {
+            text = "Clear Memory"
+            setOnClickListener {
+                clearMemory()
+            }
+        }
 
-        utilityRow.addView(
-            memoryButton,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
-
-        root.addView(utilityRow)
+        root.addView(sendButton)
+        root.addView(voiceButton)
+        root.addView(memoryButton)
+        root.addView(clearMemoryButton)
 
         setContentView(root)
     }
 
-    private fun initializeFirebase() {
-        try {
-            /*
-             * Initialize Firebase before using Firebase services.
-             */
-            Firebase.initialize(context = this)
-
-            /*
-             * Development builds only.
-             * Install the debug provider before requesting
-             * App Check tokens or using Firebase AI Logic.
-             */
-            Firebase.appCheck.installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
-
-            firebaseReady = true
-
-            append(
-                "Diagnostics",
-                "Firebase initialization: PASS"
-            )
-
-            requestAppCheckToken()
-
-        } catch (e: Exception) {
-            firebaseReady = false
-
-            append(
-                "Diagnostics",
-                "Firebase initialization failed.\n" +
-                    "Type: ${e.javaClass.simpleName}\n" +
-                    "Details: ${safeError(e)}"
-            )
+    private fun addMessage(sender: String, message: String) {
+        runOnUiThread {
+            chatText.append("$sender: $message\n\n")
         }
     }
 
-    private fun requestAppCheckToken() {
-        try {
-            FirebaseAppCheck.getInstance()
-                .getAppCheckToken(false)
-                .addOnSuccessListener { result ->
-                    append(
-                        "App Check",
-                        "App Check token request: SUCCESS\n" +
-                            "A token was received.\n" +
-                            "Token length: ${result.token.length}"
-                    )
-                }
-                .addOnFailureListener { error ->
-                    append(
-                        "App Check",
-                        "Token request failed.\n" +
-                            "Type: ${error.javaClass.simpleName}\n" +
-                            "Details: ${safeError(error)}"
-                    )
-                }
-        } catch (e: Exception) {
-            append(
-                "App Check",
-                "Token request error: ${safeError(e)}"
-            )
+    private fun setBusy(busy: Boolean) {
+        isThinking = busy
+
+        runOnUiThread {
+            sendButton.isEnabled = !busy
+            sendButton.text = if (busy) "Thinking..." else "Send"
         }
     }
 
-    private fun handleCommand(command: String) {
-        val message = command.trim()
+    private fun sendMessage() {
+        if (isThinking) return
 
-        if (message.isEmpty()) return
+        val message = inputText.text.toString().trim()
 
-        append("You", message)
-
-        when {
-            message.startsWith(
-                "remember ",
-                ignoreCase = true
-            ) -> {
-                val note = message.substringAfter("remember ").trim()
-
-                if (note.isNotEmpty()) {
-                    saveMemory(note)
-                    append("Sara", "I've saved that note on this device.")
-                }
-
-                return
-            }
-
-            message.equals(
-                "show memory",
-                ignoreCase = true
-            ) -> {
-                showMemory()
-                return
-            }
-
-            message.equals(
-                "clear memory",
-                ignoreCase = true
-            ) -> {
-                memory.edit().clear().apply()
-                append("Sara", "Local memory cleared.")
-                return
-            }
-
-            message.equals(
-                "diagnostics",
-                ignoreCase = true
-            ) -> {
-                runDiagnostics()
-                return
-            }
-
-            message.equals(
-                "show debug token",
-                ignoreCase = true
-            ) -> {
-                requestAppCheckToken()
-                return
-            }
-        }
-
-        if (requestInProgress) {
-            append("Sara", "Please wait for my current response.")
+        if (message.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Please enter a message.",
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
-        if (!firebaseReady) {
-            append(
-                "Sara",
-                "Firebase initialization failed. Tap Diagnostics."
-            )
+        inputText.setText("")
+
+        addMessage("You", message)
+
+        // Handle local memory commands without calling Gemini.
+        if (handleMemoryCommand(message)) {
             return
         }
 
-        requestInProgress = true
-        sendButton.isEnabled = false
+        askGemini(message)
+    }
 
-        append("Sara", "Thinking...")
+    private fun askGemini(message: String) {
+        setBusy(true)
+        addMessage("Sara", "Thinking...")
 
-        appScope.launch {
+        lifecycleScope.launch {
             try {
-                val response = withContext(Dispatchers.IO) {
-                    model.generateContent(message)
+                val memory = preferences.getString(
+                    MEMORY_KEY,
+                    ""
+                ).orEmpty()
+
+                val prompt = """
+                    You are Sara, the helpful AI assistant inside SARA0.1,
+                    an Android app.
+
+                    Be friendly, clear, and honest.
+                    Do not claim to remember information that is not provided.
+
+                    Saved user memories:
+                    ${if (memory.isBlank()) "No saved memories." else memory}
+
+                    User message:
+                    $message
+                """.trimIndent()
+
+                val answer = withContext(Dispatchers.IO) {
+                    model.generateContent(prompt).text
                 }
+
+                val reply = answer?.trim().takeUnless {
+                    it.isNullOrBlank()
+                } ?: "I couldn't produce a text response. Please try again."
 
                 removeThinkingMessage()
-
-                val answer = response.text?.trim()
-
-                if (answer.isNullOrEmpty()) {
-                    append(
-                        "Diagnostics",
-                        "Gemini returned no text."
-                    )
-                } else {
-                    append("Sara", answer)
-                    speak(answer)
-                }
+                addMessage("Sara", reply)
+                speak(reply)
 
             } catch (e: Exception) {
+                android.util.Log.e(
+                    "SARA0.1",
+                    "Gemini request failed",
+                    e
+                )
+
                 removeThinkingMessage()
 
-                append(
-                    "Gemini Diagnostics",
-                    "Request failed.\n" +
-                        "Type: ${e.javaClass.simpleName}\n" +
-                        "Details: ${safeError(e)}"
+                addMessage(
+                    "Sara",
+                    "I couldn't connect to Gemini. Check your internet " +
+                        "connection, Firebase setup, App Check registration, " +
+                        "and the model configuration. Please try again."
                 )
+
             } finally {
-                requestInProgress = false
-                sendButton.isEnabled = true
-            }
-        }
-    }
-
-    private fun runDiagnostics() {
-        append(
-            "SARA Diagnostics",
-            """
-            Firebase initialized: $firebaseReady
-            Model: gemini-2.5-flash
-            Text-to-speech ready: $ttsReady
-            Gemini request in progress: $requestInProgress
-
-            Type "show debug token" to request an App Check token.
-
-            Send "Hello Sara" to test Gemini.
-            """.trimIndent()
-        )
-
-        requestAppCheckToken()
-    }
-
-    private fun saveMemory(note: String) {
-        val previous = memory.getString("notes", "") ?: ""
-
-        val updated = if (previous.isBlank()) {
-            note
-        } else {
-            "$previous\n$note"
-        }
-
-        memory.edit()
-            .putString("notes", updated)
-            .apply()
-    }
-
-    private fun showMemory() {
-        val notes = memory.getString("notes", "")
-
-        append(
-            "Sara Memory",
-            if (notes.isNullOrBlank()) {
-                "No saved notes. Try: remember I like music"
-            } else {
-                notes
-            }
-        )
-    }
-
-    private fun append(speaker: String, message: String) {
-        runOnUiThread {
-            transcript.append("$speaker: $message\n\n")
-
-            scrollView.post {
-                scrollView.fullScroll(View.FOCUS_DOWN)
+                setBusy(false)
             }
         }
     }
 
     private fun removeThinkingMessage() {
         runOnUiThread {
-            transcript.text = transcript.text.toString().replace(
+            val current = chatText.text.toString()
+            val updated = current.replace(
                 "Sara: Thinking...\n\n",
                 ""
+            )
+            chatText.text = updated
+        }
+    }
+
+    private fun handleMemoryCommand(message: String): Boolean {
+        val normalized = message.trim()
+        val lower = normalized.lowercase(Locale.ROOT)
+
+        when {
+            lower == "show memory" ||
+                lower == "what do you remember" -> {
+                showMemory()
+                return true
+            }
+
+            lower.startsWith("remember ") -> {
+                val newMemory = normalized.substringAfter(
+                    "remember ",
+                    ""
+                ).trim()
+
+                if (newMemory.isBlank()) {
+                    addMessage(
+                        "Sara",
+                        "Please write what you want me to remember."
+                    )
+                    return true
+                }
+
+                val existing = preferences.getString(
+                    MEMORY_KEY,
+                    ""
+                ).orEmpty()
+
+                val updated = if (existing.isBlank()) {
+                    newMemory
+                } else {
+                    "$existing\n$newMemory"
+                }
+
+                preferences.edit()
+                    .putString(MEMORY_KEY, updated)
+                    .apply()
+
+                addMessage(
+                    "Sara",
+                    "Saved to this device's local memory."
+                )
+
+                return true
+            }
+
+            lower == "clear memory" -> {
+                clearMemory()
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun showMemory() {
+        val saved = preferences.getString(
+            MEMORY_KEY,
+            ""
+        ).orEmpty()
+
+        if (saved.isBlank()) {
+            addMessage("Sara", "Your local memory is empty.")
+        } else {
+            addMessage(
+                "Sara",
+                "Memories saved on this device:\n$saved"
             )
         }
     }
 
-    private fun safeError(error: Throwable): String {
-        return (error.message ?: "No additional details").take(700)
+    private fun clearMemory() {
+        preferences.edit()
+            .remove(MEMORY_KEY)
+            .apply()
+
+        addMessage(
+            "Sara",
+            "Local memory cleared."
+        )
     }
 
-    private fun startSpeechInput() {
+    private fun requestMicrophonePermissionIfNeeded() {
         if (
             ContextCompat.checkSelfPermission(
                 this,
@@ -444,46 +396,62 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
-                requestAudio
+                REQUEST_MICROPHONE
             )
+        }
+    }
+
+    private fun startVoiceInput() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(
+                this,
+                "Speech recognition is unavailable on this device.",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
 
-        launchSpeechRecognizer()
-    }
+        if (
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestMicrophonePermissionIfNeeded()
+            return
+        }
 
-    private fun launchSpeechRecognizer() {
-        try {
-            val intent = Intent(
-                RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-            ).apply {
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                )
-
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE,
-                    Locale.getDefault()
-                )
-
-                putExtra(
-                    RecognizerIntent.EXTRA_PROMPT,
-                    "Speak to Sara"
-                )
-            }
-
-            startActivityForResult(intent, requestSpeech)
-
-        } catch (e: Exception) {
-            append(
-                "Sara",
-                "Speech recognition unavailable: ${safeError(e)}"
+        val intent = Intent(
+            RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+        ).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
+
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE,
+                Locale.getDefault().toLanguageTag()
+            )
+
+            putExtra(
+                RecognizerIntent.EXTRA_PROMPT,
+                "Speak to Sara"
+            )
+        }
+
+        try {
+            startActivityForResult(intent, REQUEST_SPEECH)
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Could not start speech recognition.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    @Deprecated("Legacy speech activity result API")
+    @Deprecated("Uses the Android speech recognition activity result API.")
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
@@ -492,7 +460,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (
-            requestCode == requestSpeech &&
+            requestCode == REQUEST_SPEECH &&
             resultCode == RESULT_OK
         ) {
             val results = data?.getStringArrayListExtra(
@@ -502,68 +470,55 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val spokenText = results?.firstOrNull()
 
             if (!spokenText.isNullOrBlank()) {
-                handleCommand(spokenText)
-            }
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults
-        )
-
-        if (requestCode == requestAudio) {
-            if (
-                grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED
-            ) {
-                launchSpeechRecognizer()
-            } else {
-                Toast.makeText(
-                    this,
-                    "Microphone permission is required for voice input.",
-                    Toast.LENGTH_LONG
-                ).show()
+                inputText.setText(spokenText)
+                inputText.setSelection(inputText.text.length)
             }
         }
     }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val languageResult =
-                tts?.setLanguage(Locale.getDefault())
+            val result = textToSpeech?.setLanguage(
+                Locale.getDefault()
+            )
 
             ttsReady =
-                languageResult != TextToSpeech.LANG_MISSING_DATA &&
-                languageResult != TextToSpeech.LANG_NOT_SUPPORTED
+                result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
+
+            if (!ttsReady) {
+                android.util.Log.w(
+                    "SARA0.1",
+                    "Default device language is not supported by TTS."
+                )
+            }
         } else {
             ttsReady = false
+
+            android.util.Log.e(
+                "SARA0.1",
+                "Text-to-speech initialization failed."
+            )
         }
     }
 
-    private fun speak(text: String) {
-        if (ttsReady) {
-            tts?.speak(
-                text,
+    private fun speak(message: String) {
+        if (!ttsReady) return
+
+        runOnUiThread {
+            textToSpeech?.speak(
+                message,
                 TextToSpeech.QUEUE_FLUSH,
                 null,
-                "SARA_RESPONSE"
+                "SARA_REPLY"
             )
         }
     }
 
     override fun onDestroy() {
-        appScope.cancel()
-
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
 
         super.onDestroy()
     }
