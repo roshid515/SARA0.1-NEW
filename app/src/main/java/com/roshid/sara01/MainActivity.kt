@@ -1,12 +1,14 @@
 package com.roshid.sara01
 
 import android.app.Activity
-import android.os.Bundle
 import android.graphics.Color
+import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
@@ -23,55 +25,58 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         buildScreen()
-
-        statusText.text = "SARA 0.1\n\nInitializing Firebase..."
+        showStatus("SARA 0.1\n\nInitializing Firebase...")
 
         try {
-            // Initialize Firebase
+            // Step 1: Initialize Firebase.
             val firebaseApp = FirebaseApp.initializeApp(this)
 
             if (firebaseApp == null) {
-                statusText.text =
+                showStatus(
                     "Firebase initialization failed.\n\n" +
-                    "Check that google-services.json is in the app folder."
+                    "Check that google-services.json exists in the app folder."
+                )
 
-                Log.e(TAG, "FirebaseApp.initializeApp returned null")
+                Log.e(TAG, "Firebase initialization returned null")
                 return
             }
 
             Log.i(TAG, "Firebase initialized successfully")
 
-            // Install the App Check debug provider
+            // Step 2: Get the App Check instance.
             val appCheck = FirebaseAppCheck.getInstance(firebaseApp)
 
+            // Step 3: Install the debug provider.
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
 
-            Log.i(TAG, "App Check debug provider installed")
+            Log.i(TAG, "Debug provider factory installed")
 
-            statusText.text =
+            showStatus(
                 "SARA 0.1\n\n" +
                 "Firebase initialized successfully.\n\n" +
                 "App Check debug provider installed.\n\n" +
-                "Requesting App Check token..."
+                "Requesting token..."
+            )
 
-            // Request an App Check token
+            // Step 4: Request an App Check token.
             appCheck.getAppCheckToken(false)
-                .addOnSuccessListener { tokenResult ->
+                .addOnSuccessListener { result ->
 
-                    Log.i(TAG, "App Check token request succeeded")
+                    Log.i(
+                        TAG,
+                        "App Check token request succeeded"
+                    )
 
-                    // Never print the actual token into logs.
-                    // The result confirms that a token was obtained.
-                    Log.i(TAG, "Token received successfully")
-
-                    statusText.text =
+                    // Never print the token itself into logs.
+                    showStatus(
                         "SARA 0.1\n\n" +
                         "Firebase initialized successfully.\n\n" +
-                        "App Check debug provider installed.\n\n" +
+                        "Debug provider installed.\n\n" +
                         "App Check token received successfully.\n\n" +
-                        "Next: Check Firebase Console."
+                        "Next: Verify the Firebase Console configuration."
+                    )
                 }
                 .addOnFailureListener { error ->
 
@@ -81,49 +86,54 @@ class MainActivity : Activity() {
                         error
                     )
 
-                    statusText.text =
+                    showStatus(
                         "SARA 0.1\n\n" +
                         "Firebase initialized successfully.\n\n" +
-                        "App Check debug provider installed.\n\n" +
-                        "Token request failed.\n\n" +
-                        "Error: ${error.localizedMessage ?: "Unknown error"}"
+                        "Debug provider installed.\n\n" +
+                        "TOKEN REQUEST FAILED\n\n" +
+                        "Error:\n" +
+                        (error.localizedMessage ?: error.javaClass.simpleName) +
+                        "\n\nCheck Firebase App Check configuration."
+                    )
                 }
 
         } catch (error: Exception) {
 
-            Log.e(TAG, "Firebase setup failed", error)
+            Log.e(TAG, "Firebase/App Check setup failed", error)
 
-            statusText.text =
+            showStatus(
                 "SARA 0.1\n\n" +
-                "Firebase setup failed.\n\n" +
-                "Error: ${error.localizedMessage ?: "Unknown error"}"
+                "SETUP FAILED\n\n" +
+                "Error:\n" +
+                (error.localizedMessage ?: error.javaClass.simpleName)
+            )
         }
     }
 
     private fun buildScreen() {
 
-        val layout = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(32, 32, 32, 32)
+            setPadding(28, 28, 28, 28)
             setBackgroundColor(Color.rgb(18, 18, 30))
         }
 
         val title = TextView(this).apply {
             text = "SARA 0.1"
             textSize = 30f
-            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
         }
 
         statusText = TextView(this).apply {
             textSize = 17f
-            setTextColor(Color.rgb(150, 220, 255))
             gravity = Gravity.CENTER
-            setPadding(0, 32, 0, 0)
+            setTextColor(Color.rgb(150, 220, 255))
+            setPadding(0, 28, 0, 0)
         }
 
-        layout.addView(
+        root.addView(
             title,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -131,14 +141,31 @@ class MainActivity : Activity() {
             )
         )
 
-        layout.addView(
+        val scrollView = ScrollView(this)
+
+        scrollView.addView(
             statusText,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT
             )
         )
 
-        setContentView(layout)
+        root.addView(
+            scrollView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        setContentView(root)
+    }
+
+    private fun showStatus(message: String) {
+        runOnUiThread {
+            statusText.text = message
+        }
     }
 }
