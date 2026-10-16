@@ -10,12 +10,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-import androidx.lifecycle.lifecycleScope
-
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.GenerativeBackend
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
@@ -34,11 +34,11 @@ class MainActivity : Activity() {
 
             output.text = """
                 SARA 0.1
-                
+
                 Firebase initialized successfully.
-                
+
                 Gemini AI test is ready.
-                
+
                 Type a message below and tap Send to Gemini.
             """.trimIndent()
 
@@ -138,9 +138,9 @@ class MainActivity : Activity() {
         }
 
         sendButton.isEnabled = false
-        output.text = "Testing Gemini AI...\nPlease wait."
+        output.text = "Connecting to Gemini AI...\nPlease wait."
 
-        lifecycleScope.launch {
+        CoroutineScope(Dispatchers.Main).launch {
             try {
                 val ai = FirebaseAI.getInstance(
                     backend = GenerativeBackend.googleAI()
